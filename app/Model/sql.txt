@@ -1,0 +1,44 @@
+CREATE TABLE Users (
+  user_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(50) UNIQUE,
+  phone VARCHAR(20) UNIQUE NOT NULL,
+  role ENUM ('HOST', 'SUPER_USER') NOT NULL DEFAULT 'HOST'
+);
+
+
+CREATE TABLE Contacts (
+  contact_id INT AUTO_INCREMENT PRIMARY KEY,
+  event_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  phone VARCHAR(20) UNIQUE NOT NULL,
+  FOREIGN KEY (event_id) REFERENCES Events (event_id) ON DELETE CASCADE
+);
+
+CREATE TABLE Transactions (
+  _id INT AUTO_INCREMENT PRIMARY KEY,
+  contact_id INT NOT NULL,
+  name VARCHAR(100),
+  conversation VARCHAR(100) NOT NULL DEFAULT '',
+  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (contact_id) REFERENCES Contacts (contact_id)
+);
+
+CREATE TABLE Log (
+  message_id INT AUTO_INCREMENT PRIMARY KEY,
+  contact_id INT NOT NULL,
+  message_type ENUM ('SENT', 'RECEIVED') NOT NULL,
+  content TEXT NOT NULL,
+  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  whatsapp_message_id VARCHAR(100) DEFAULT NULL,
+  FOREIGN KEY (contact_id) REFERENCES Contacts (contact_id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE Messages (
+  message_id INT AUTO_INCREMENT PRIMARY KEY,
+  msg_key VARCHAR(50) NOT NULL,
+  text TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+

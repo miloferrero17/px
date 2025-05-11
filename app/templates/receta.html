@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* A4 apaisada con márgenes de 1 cm */
+    @page {
+      size: A4 landscape;
+      margin: 1cm;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+    body {
+      font-family: sans-serif;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Contenedor que ocupa la mitad izquierda de la página */
+    .content {
+      position: relative;
+      width: 50%;
+      height: 100%;
+      box-sizing: border-box;
+      padding: 1cm;
+    }
+    /* Encabezado */
+    .header {
+      text-align: center;
+      margin-bottom: 5mm;
+    }
+    .logo {
+      width: 25mm;
+      margin-bottom: 3mm;
+    }
+    /* Datos del paciente */
+    .datos-paciente {
+      margin-bottom: 5mm;
+      line-height: 1.2em;
+    }
+    /* Sección Rp */
+    .rp {
+      margin-bottom: 5mm;
+    }
+    /* Diagnóstico */
+    .diagnostico {
+      margin-bottom: 20mm; /* Reservar espacio para firma + footer */
+    }
+    /* Firma del médico */
+    .signature {
+      position: absolute;
+      bottom: 30mm;
+      right: 1cm;
+      text-align: center;
+    }
+    .signature img {
+      max-width: 40mm;
+      height: auto;
+      display: block;
+      margin-bottom: 2mm;
+    }
+    .signature .nombre {
+      font-weight: bold;
+    }
+    .signature .especialidad {
+      font-size: 0.9em;
+    }
+    .signature .matricula {
+      font-size: 0.8em;
+    }
+    /* Footer dentro de la mitad izquierda */
+    .footer {
+      position: absolute;
+      bottom: 1cm;
+      left: 1cm;
+      right: 1cm;
+      text-align: center;
+      font-size: 0.75em;
+      line-height: 1.2em;
+      border-top: 1px solid #ddd;
+      padding-top: 3mm;
+    }
+    /* Línea divisoria vertical */
+    .divider {
+      position: absolute;
+      top: 1cm;
+      bottom: 1cm;
+      left: 50%;
+      border-left: 1px dashed #666;
+    }
+  </style>
+</head>
+<body>
+  <!-- Línea vertical divisoria -->
+  <div class="divider"></div>
+  <div class="content">
+    <div class="header">
+      {% if doctor.logo_url %}
+        <img src="{{ doctor.logo_url }}" class="logo" alt="Logo">
+      {% endif %}
+      <h2>{{ doctor.nombre }}</h2>
+      <p>{{ doctor.especialidad }}<br>Matr. Nac.: {{ doctor.matricula }}</p>
+    </div>
+
+    <div class="datos-paciente">
+      <strong>Paciente:</strong> {{ paciente.nombre }}<br>
+      <strong>DNI:</strong> {{ paciente.dni }}<br>
+      <strong>Sexo:</strong> {{ paciente.sexo }} &nbsp;
+      <strong>F. Nac.:</strong> {{ paciente.fecha_nac }}<br>
+      <strong>OS:</strong> {{ paciente.obra_social }} &nbsp;
+      <strong>Plan:</strong> {{ paciente.plan }} &nbsp;
+      <strong>Cred.:</strong> {{ paciente.credencial }}
+    </div>
+
+    <div class="rp">
+      <h3>Rp:</h3>
+      <ul>
+        {% for linea in rp %}
+          <li>{{ linea }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="diagnostico">
+      <strong>Diagnóstico:</strong> {{ diagnostico }}
+    </div>
+
+    <div class="signature">
+      <img src="https://a.storyblok.com/f/191576/1176x882/0707bde47c/make_signature_hero_after.webp"
+           alt="Firma del médico">
+      <div class="nombre">{{ doctor.nombre }}</div>
+      <div class="especialidad">{{ doctor.especialidad }}</div>
+      <div class="matricula">M.n {{ doctor.matricula }}</div>
+    </div>
+
+    <div class="footer">
+      Esta receta fue creada por un emisor inscripto y validado en el Registro de Recetarios Electrónicos del  
+      Ministerio de Salud de la Nación RL-2024-100292307-APN-SSVEIYES#MS<br>
+      {{ doctor.email }} • Fecha: {{ fecha }}
+    </div>
+  </div>
+</body>
+</html>

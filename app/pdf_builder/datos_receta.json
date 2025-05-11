@@ -1,0 +1,24 @@
+{
+  "doctor": {
+    "nombre": "Agustin Fernandez Viña",
+    "especialidad": "MÉDICO ESPECIALISTA EN DIAGNÓSTICO",
+    "matricula": "140.100",
+    "email": "agustinfvinadxi@gmail.com",
+    "logo_url": "https://web.innovamed.com.ar/hubfs/LOGO%20A%20COLOR%20SOLO-2.png"
+  },
+  "paciente": {
+    "nombre": "EMILIO  FERRERO",
+    "dni": "32359799",
+    "sexo": "Masculino",
+    "fecha_nac": "17/05/1986",
+    "obra_social": "OSDE",
+    "plan": "450",
+    "credencial": "62028536101"
+  },
+  "rp": [
+    "Indico ecodopler color de vasos carotídeos.",
+    "Ecodopler color de vasos de cuello."
+  ],
+  "diagnostico": "ACV",
+  "fecha": "21/04/2025"
+}

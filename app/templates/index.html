@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Gestión de Consultas</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <!-- Header con logo y título -->
+  <header class="app-header">
+    <img
+      src="https://blog.elegimejor.net/wp-content/uploads/2023/11/sanatorio-mater-dei.jpeg"
+      alt="Logo Sanatorio Mater Dei"
+      class="app-logo"
+    >
+    <h1 class="app-title">Backoffice medico</h1>
+  </header>
+ 
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, msg in messages %}
+          <li class="{{ category }}">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <div class="section">
+    {% if step == "phone" %}
+      <h1 class="section-title">Ingresá el teléfono</h1>
+      <form method="get" action="{{ url_for('routes.index') }}">
+        <input type="text" name="tel" placeholder="Ej. 5491123456789">
+        <button type="submit">Consultar</button>
+      </form>
+
+    {% elif step == "select" %}
+      <h1 class="section-title">Consultas de {{ telefono }}</h1>
+      <ul class="session-list">
+        {% for s in sesiones %}
+          <!-- la más nueva (loop.first) en azul y con etiqueta -->
+          <li class="{{ 'open' if loop.first else 'closed' }}">
+            <a href="{{ url_for('routes.index', tel=telefono, txid=s.id) }}">
+              {{ s.timestamp }}{% if loop.first %} – Última consulta{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <p><a href="{{ url_for('routes.index') }}">&larr; Cambiar teléfono</a></p>
+
+    {% elif step == "qa" %}
+      <h1 class="section-title">Consulta {{ txid }} de {{ telefono }}</h1>
+
+      <ul class="cards">
+        {% for m in interacciones %}
+          <li class="card {{ m.role }}">
+            <p>
+              <strong>
+                {% if m.role == "assistant" %}Asistente{% else %}Paciente{% endif %}:
+              </strong>
+            </p>
+            <p>{{ m.content }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <h2 class="section-title">Feedback del médico</h2>
+      <form method="post" action="{{ url_for('routes.feedback') }}">
+        <input type="hidden" name="tel" value="{{ telefono }}">
+        <input type="hidden" name="txid" value="{{ txid }}">
+
+        <label for="rating">Puntuación (1–5):</label>
+        <select id="rating" name="rating">
+          {% for i in range(1,6) %}
+            <option value="{{ i }}">{{ i }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="comment">Comentario:</label>
+        <textarea id="comment" name="comment" rows="4" placeholder="Agrega tus observaciones aquí..."></textarea>
+
+        <button type="submit">Enviar Feedback</button>
+      </form>
+
+      <p><a href="{{ url_for('routes.index', tel=telefono) }}">&larr; Volver a consultas</a></p>
+    {% endif %}
+  </div>
+</body>
+</html>
+
+
+
+<!--
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Gestión de Consultas</title>
+</head>
+<body>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul>
+        {% for category, msg in messages %}
+          <li class="{{ category }}">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <h1>Gestión de Consultas</h1>
+
+  {% if step == "phone" %}
+    <form method="get" action="{{ url_for('routes.index') }}">
+      <label for="tel">Teléfono:</label>
+      <input type="text" id="tel" name="tel" placeholder="Ej. 5491123456789">
+      <button type="submit">Consultar</button>
+    </form>
+
+  {% elif step == "select" %}
+    <p>Paciente: <strong>{{ telefono }}</strong></p>
+    <p>Seleccioná la consulta a revisar:</p>
+    <ul>
+      {% for s in sesiones %}
+        <li>
+          <a href="{{ url_for('routes.index', tel=telefono, txid=s.id) }}">
+            {{ s.timestamp }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+    <p><a href="{{ url_for('routes.index') }}">← Cambiar teléfono</a></p>
+
+  {% elif step == "qa" %}
+    <p>Paciente: <strong>{{ telefono }}</strong> | Consulta ID: <strong>{{ txid }}</strong></p>
+
+    <h2>Historial de conversación</h2>
+    {% for qa in qas %}
+      <p>
+        <strong>{{ qa.pregunta }}</strong><br>
+        {{ qa.respuesta }}
+      </p>
+      <hr>
+    {% endfor %}
+
+    <h2>Feedback del médico</h2>
+    <form method="post" action="{{ url_for('routes.feedback') }}">
+      <input type="hidden" name="tel" value="{{ telefono }}">
+      <input type="hidden" name="txid" value="{{ txid }}">
+
+      <label for="rating">Puntuación (1–5):</label>
+      <select id="rating" name="rating">
+        {% for i in range(1, 6) %}
+          <option value="{{ i }}">{{ i }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+
+      <label for="comment">Comentario:</label><br>
+      <textarea id="comment" name="comment" rows="4" cols="50"
+                placeholder="Agrega tus observaciones aquí..."></textarea>
+      <br><br>
+
+      <button type="submit">Enviar Feedback</button>
+    </form>
+
+    <p><a href="{{ url_for('routes.index', tel=telefono) }}">← Volver a listado de consultas</a></p>
+  {% endif %}
+
+</body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Consulta y Feedback</title>
+</head>
+<body>
+  <h1>Buscar paciente</h1>
+  <form method="get" action="{{ url_for('routes.index') }}">
+    <input name="tel" placeholder="Teléfono" value="{{ telefono }}">
+    <button>Consultar</button>
+  </form>
+
+  {% if qas %}
+    <hr>
+    <h2>Historial</h2>
+    {% for qa in qas %}
+      <p><strong>{{ qa.pregunta }}</strong><br>{{ qa.respuesta }}</p>
+      <hr style="margin:2em 0;">
+    {% endfor %}
+
+    <h2>Feedback del médico</h2>
+    <form method="post" action="{{ url_for('routes.feedback') }}">
+      <input type="hidden" name="tel"   value="{{ telefono }}">
+      <label>Puntuación (1-5):</label>
+      <select name="rating">
+        {% for i in range(1,6) %}
+          <option value="{{ i }}">{{ i }}</option>
+        {% endfor %}
+      </select>
+      <br><br>
+      <label>Comentario:</label><br>
+      <textarea name="comment" rows="4" cols="50"></textarea><br><br>
+      <button>Enviar Feedback</button>
+    </form>
+  {% endif %}
+</body>
+</html>
+
+
+
+<<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Historial y Feedback</title>
+</head>
+<body>
+  <h1>Historial de conversación</h1>
+  <form method="post" action="{{ url_for('routes.index') }}">
+    <input name="tel" placeholder="Teléfono" value="{{ telefono }}">
+    <button>Consultar</button>
+  </form>
+
+  {% if qas %}
+    <div style="margin-top:20px;">
+      {% for qa in qas %}
+        <p><strong>{{ qa.pregunta }}</strong><br>
+        {{ qa.respuesta }}</p>
+        <hr style="margin:2em 0;">
+      {% endfor %}
+    </div>
+
+    <h2>Feedback del médico</h2>
+    <form method="post" action="{{ url_for('routes.feedback') }}">
+      <input type="hidden" name="tel" value="{{ telefono }}">
+      <div>
+        <label>Puntuación (1-5):</label>
+        <select name="rating">
+          {% for i in range(1,6) %}
+            <option value="{{ i }}">{{ i }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="margin-top:1em">
+        <label>Comentario:</label><br>
+        <textarea name="comment" rows="4" cols="50"></textarea>
+      </div>
+      <button style="margin-top:1em">Enviar Feedback</button>
+    </form>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul>
+        {% for category, msg in messages %}
+          <li class="{{ category }}">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+</body>
+</html>
+-->
+
+<!-- 
+!DOCTYPE html>
+<html>
+<head><title>Historial</title></head>
+<body>
+  <h1>Historial de conversación</h1>
+  <form method="post">
+    <input name="tel" placeholder="Teléfono">
+    <button>Consultar</button>
+  </form>
+
+  {% if qas %}
+    <div style="margin-top:20px;">
+      {% for qa in qas %}
+        <p><strong>{{ qa.pregunta }}</strong><br>
+        {{ qa.respuesta }}</p>
+        <hr style="margin:2em 0;">
+      {% endfor %}
+    </div>
+  {% endif %}
+</body>
+</html>
+-->

@@ -1,0 +1,34 @@
+<!-- templates/feedback_thanks.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>¡Gracias!</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="section">
+    <h1 class="section-title">✅ ¡Feedback registrado!</h1>
+    <p class="section-text">
+      Gracias por tu aporte. Te redirigimos en <span id="countdown">5</span> segundos...
+    </p>
+  </div>
+
+  <script>
+    let count = 5;
+    const countdownEl = document.getElementById('countdown');
+
+    const interval = setInterval(() => {
+      count -= 1;
+      if (count <= 0) {
+        clearInterval(interval);
+        // Sin parámetros, vuelve a la primera página (step phone)
+        window.location.href = "{{ url_for('routes.index') }}";
+      } else {
+        countdownEl.textContent = count;
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
+

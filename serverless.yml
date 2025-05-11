@@ -1,0 +1,42 @@
+service: flask-lambda-hello
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}  # Usa dev si no pasás --stage
+  environment:
+    ENV: ${opt:stage, 'dev'}  # Para usar en tu código Python
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    SUPABASE_URL: ${env:SUPABASE_URL}
+    SUPABASE_API_KEY: ${env:SUPABASE_API_KEY}
+    TWILIO_ACCOUNT_SID: ${env:TWILIO_ACCOUNT_SID}
+    TWILIO_AUTH_TOKEN: ${env:TWILIO_AUTH_TOKEN}
+    TWILIO_WHATSAPP_NUMBER: ${env:TWILIO_WHATSAPP_NUMBER}
+    PINECONE_API_KEY: ${env:PINECONE_API_KEY}
+
+functions:
+  app:
+    name: flask-lambda-hello-${opt:stage, 'dev'}-app
+    handler: wsgi_handler.handler
+    timeout: 29        # aumenta el límite de ejecución a 30 segundos
+    memorySize: 1024   # opcional: asigna 1 GB de RAM
+    events:
+      - http:
+          path: /
+          method: ANY
+      - http:
+          path: /{proxy+}
+          method: ANY
+
+plugins:
+  - serverless-wsgi
+  - serverless-python-requirements
+  - serverless-dotenv-plugin
+
+custom:
+  wsgi:
+    app: app.app
+    packRequirements: false
+  pythonRequirements:
+    dockerizePip: true

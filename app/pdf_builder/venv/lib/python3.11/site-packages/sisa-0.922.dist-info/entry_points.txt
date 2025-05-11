@@ -1,0 +1,3 @@
+[console_scripts]
+sisa_puco = sisa.puco_cli:main
+
