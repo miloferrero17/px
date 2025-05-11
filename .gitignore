@@ -1,0 +1,11 @@
+# Archivos de configuración con claves
+.env
+.env.*
+sandbox.py
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Otros
+.DS_Store
