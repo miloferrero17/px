@@ -123,7 +123,7 @@ def nodo_35(variables):
 
     foto_prompt = (
         "Basado en esta conversacion: " + variables["conversation_str"] +
-        " ¿Crees que una foto de la zona afectada complementaria el diagnostico?"
+        " ¿Crees que una foto de la zona afectada o un pdf medico complementaria el diagnostico?"
         "Respondeme con numeros. 0 por si o 1 por no"
     )
     print(foto_prompt)
@@ -320,7 +320,7 @@ def nodo_39(variables):
     """
     Nodo de pregunta de la foto
     """
-    response_text = "¿Me mandas un documento/foto?"
+    response_text = "¿Me compartirias si lo crees necesario un documento o una foto que me ayuden a mejorar mi diagnostico?"
     return {
         "nodo_destino": 38,
         "subsiguiente": 1,
