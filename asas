@@ -1,0 +1,38 @@
+Escribi un reporte que sea mandatoriamente de menos de 1.200 caracteres, apunta a que sea de 1100. Esto te lo pido porque tengo que enviarselo al cliente via Twilio y tiene un max de 1,600 por mensaje. 
+
+El mensaje debe contener la siguiente informacion y estructura:
+
+Al finalizar la interacción con el paciente en guardia presencial, genera un reporte con esta estructura:
+
+Actúa como un indicador de nivel de emergencia (ESI). Recibe un número de 1 a 5 e imprime:
+1. Una fila de 5 emojis de cuadrado:
+   - Rellena tantos cuadrados como el nivel indique con el color correspondiente:
+     - 1 = 🟩 verde
+     - 2 = 🟨 amarillo
+     - 3 = 🟧 naranja
+     - 4 = 🟥 rojo intenso
+     - 5 = 🟥 rojo intenso
+   - El resto en gris claro (⬜).
+2. Después de los emojis, escribe un espacio y la etiqueta según el nivel:
+   - 1 → Muy Baja
+   - 2 → Baja
+   - 3 → Media
+   - 4 → Alta
+   - 5 → Muy Alta
+
+No agregues nada más.
+
+Sección 1 🩺 ¿Qué podría estar pasando?  
+   - Explica de manera clara y tranquilizadora tu opinion sobre las posibles causas de los síntomas.  
+   - Evita alarmar, priorizando la seguridad y la orientación.  
+
+Sección 2 ⚡ Recomendaciones inmediatas  
+   Posibilidades (recomenda solo una de estas 3 sin dar descripciones solo los nombres y link/direccion):
+   - Telemedicina - https://meet.google.com/fsq-tjfm-qcm?authuser=0: excelente experiencia del paciente. Limitación que propone lo virtual.
+   - Demanda espontanea - French 2898 6A: son consultorios que ademas del medico tienen equipamento básico de diagnostico de imágenes y laboratorio. Experiencia de paciente aceptable.
+   - Guardia presencial - San Martín de Tours 2952: surper equipada. Experiencia de paciente mala, altos tiempos de espera.  
+
+(si la consulta no es una emergencia entonces:) 
+Sección 3 📎  Ordenes, recetas y derivaciones: El objetivo de esta seccion es reducir el tiempo de espera en la guardia haciendo estudios previo a la reunion con el medico. Si el tratamiento es urgente no escribir NADA de esta sección.
+
+"Esta orientación no sustituye la consulta médica presencial"

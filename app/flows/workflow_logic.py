@@ -13,6 +13,7 @@ def ejecutar_nodo(nodo_id, variables):
         37: nodo_37,
         38: nodo_38,
         39: nodo_39,
+        40: nodo_40,
         100: nodo_100,
         101: nodo_101,
         #102: nodo_102,
@@ -218,7 +219,6 @@ def nodo_36(variables):
 def nodo_37(variables):
     """
     Nodo de generación de reporte médico final usando el historial de conversación.
-    Marca la sesión como 'Cerrada' y redirige al nodo de reinicio (33).
     """
     import app.services.brain as brain
     import app.services.twilio_service as twilio
@@ -248,13 +248,13 @@ def nodo_37(variables):
     response_text = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
 
     return {
-        "nodo_destino": 32,
+        "nodo_destino": 40,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
         "response_text": response_text,
         "group_id": None,
         "question_id": None,
-        "result": "Cerrada"
+        "result": "Abierta"
     }
 
 
@@ -344,12 +344,144 @@ def nodo_39(variables):
         "result": "Abierta"
     }
 
+'''
+def nodo_40(variables):
+    """
+    Nodo que genera un listado de estudios médicos sugeridos para el paciente
+    basándose en el historial de conversación. Envía el listado por WhatsApp    
+    """
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import json
+
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    sender_number = "whatsapp:+" + numero_limpio
+
+    twilio.send_whatsapp_message("Un momento, estoy revisando qué estudios podrías necesitar...", sender_number, None)
+
+    conversation_history = variables["conversation_history"]
+
+    # Agrego una instrucción específica para que el modelo proponga estudios
+    conversation_history.append({
+        "role": "system",
+        "content": "Por favor, generá una lista de estudios médicos mandatorios que el paciente debería realizar antes de ver al médico, en base al historial anterior. Hay dos posibles respuestas: 1) Listado de estudios separado por enter y comennzando con - sin introduccion ni desenlace listos para ser escritos en una receta o 2) el numero 0 si no hace falta que se haga ningun estudio antes de ver al medico."
+    })
+
+    result3 = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
+    
+    return {
+        "nodo_destino": 32,
+        "subsiguiente": 1,
+        "conversation_str": json.dumps(conversation_history),
+        "response_text": result3,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+    }
+
+'''
+
+
+def nodo_40(variables):
+    """
+    Nodo que genera un listado de estudios médicos sugeridos para el paciente,
+    y si corresponde, genera un PDF de receta médica con esos estudios.
+    """
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import json
+    from datetime import datetime
+    from app.pdf_builder.generate_pdf import generate_recipe_pdf_from_data  # ✅ Usamos solo esta función
+    import app.services.uploader as uploader
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    sender_number = "whatsapp:+" + numero_limpio
+
+    twilio.send_whatsapp_message("Un momento, estoy viendo qué estudios podrías necesitar...", sender_number, None)
+
+    conversation_history = variables["conversation_history"]
+
+    conversation_history.append({
+        "role": "system",
+        "content": (
+            "Por favor, generá una lista de estudios médicos mandatorios que el paciente debería realizar antes de ver al médico, "
+            "en base al historial anterior. Hay dos posibles respuestas: 1) Listado de estudios separado por enter y comenzando con - "
+            "sin introducción ni desenlace, listos para ser escritos en una receta; o 2) el número 0 si no hace falta hacer ningún estudio antes de ver al médico."
+        )
+    })
+
+    estudios_raw = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
 
 
 
 
 
+    if estudios_raw.strip() == "0":
+        twilio.send_whatsapp_message("✅ No hace falta que te realices estudios antes de ver al médico.", sender_number, None)
+        return {
+            "nodo_destino": 32,
+            "subsiguiente": 1,
+            "conversation_str": json.dumps(conversation_history),
+            "response_text": estudios_raw,
+            "group_id": None,
+            "question_id": None,
+            "result": "Sin estudios"
+        }
 
+    estudios_list = [line.strip("- ").strip() for line in estudios_raw.strip().split("\n") if line.strip()]
+
+    contacto = ctt.get_by_phone(numero_limpio)
+    doctor = {
+        "nombre": "DR AGUSTIN FERNANDEZ VIÑA",
+        "matricula": "140.100",
+        "logo_url": "https://web.innovamed.com.ar/hubfs/LOGO%20A%20COLOR%20SOLO-2.png"
+    }
+    paciente = {
+        "nombre": "Julian Patricio Ferrero",
+        "dni": "601.904.816",
+        "sexo": "M",
+        "fecha_nac": "09/06/1979",
+        "obra_social": "Vida Cámara",
+        "plan": "AAA",
+        "credencial": "601.904.816"
+    }
+
+    diagnostico = "Se solicita realización de los estudios indicados para evaluación médica."
+    fecha = datetime.now().strftime("%d/%m/%Y")
+    output_pdf = f"app/temp/receta_estudios_{numero_limpio}_{timestamp}.pdf"
+
+    generate_recipe_pdf_from_data(
+        doctor=doctor,
+        paciente=paciente,
+        rp=estudios_list,
+        diagnostico=diagnostico,
+        fecha=fecha,
+        output_pdf=output_pdf
+    )
+
+    url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=output_pdf)
+    print(url)
+    twilio.send_whatsapp_message("Tus recetas:", sender_number, url)
+
+    #twilio.send_whatsapp_message("📄 Ya tengo tu receta con los estudios indicados. Pronto te la comparto.", sender_number, None)
+
+    return {
+        "nodo_destino": 32,
+        "subsiguiente": 1,
+        "conversation_str": json.dumps(conversation_history),
+        "response_text": estudios_raw,
+        "pdf_path": output_pdf,
+        "group_id": None,
+        "question_id": None,
+        "result": "Receta generada"
+    }
 
 
 
@@ -443,8 +575,8 @@ def nodo_101(variables):
         next_qid = nxt
 
     # Obtener texto de la pregunta
-    pregunta = qs.get_question_name_by_id(next_qid)
-    sender = "whatsapp:+" + numero
+    #pregunta = qs.get_question_name_by_id(next_qid)
+    #sender = "whatsapp:+" + numero
     # Enviar la pregunta
     #twilio.send_whatsapp_message(pregunta, sender, None)
 
@@ -453,7 +585,7 @@ def nodo_101(variables):
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": pregunta,
-        "group_id": variables["group_id"],
-        "question_id": next_qid,
-        "result": "Abierta"
+        "group_id": "",
+        "question_id": "",
+        "result": "Cerrada"
     }

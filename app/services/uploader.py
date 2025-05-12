@@ -21,5 +21,5 @@ def subir_a_s3(bucket_name = "mi-bucket-milito", archivo_local = "app/temp/recet
     return url_firmada
 
 
-#url = subir_a_s3()
+#url = subir_a_s3(archivo_local, nombre_en_s3)
 #print("✅ URL firmada:", url)
