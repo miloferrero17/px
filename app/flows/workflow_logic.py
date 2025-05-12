@@ -1,5 +1,5 @@
 ''' Codificacion de diagramas de flujo:
-0XX - PX - Chat
+0XX - PX - WA
 1XX - Hunitro
 ''' 
 
@@ -20,6 +20,18 @@ def ejecutar_nodo(nodo_id, variables):
     return NODOS[nodo_id](variables)
 
 
+
+
+
+
+
+
+
+
+
+#############################################################
+# PX - WA
+#############################################################
 
 def nodo_32(variables):
     """
@@ -331,6 +343,34 @@ def nodo_39(variables):
         "question_id": None,
         "result": "Abierta"
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#############################################################
+# HUNITRO
+#############################################################
 
 
 
