@@ -76,7 +76,7 @@ def whatsapp_reply():
 
             elif media_type.startswith("image"):
                 print("🖼️ Es imagen")
-                twilio.send_whatsapp_message("Dejame ver tu foto ...", sender_number)
+                twilio.send_whatsapp_message("Dejame ver tu imagen ...", sender_number)
                 description = vision.describe_image(reply_path)
                 print(f"🧠 Descripción generada: {description}")
                 message_body = message_body + description
@@ -84,10 +84,11 @@ def whatsapp_reply():
 
             elif media_type == "application/pdf":
                 print("📄 Es PDF")
-                #twilio.send_whatsapp_message("Dejame ver tu archivo ...", sender_number)
+                twilio.send_whatsapp_message("Dejame ver tu archivo ...", sender_number)
                 pdf_text = vision.extract_text_from_pdf(reply_path)
-                print(f"📄 Texto extraído del PDF:\n{pdf_text[:300]}...")  # Log parcial
-                twilio.send_whatsapp_message("Dejame ver ... ", sender_number)
+                pdf_text = vision.resumir_texto_largo(pdf_text)
+                print(f"📄 Texto resumido del PDF:\n{pdf_text[:300]}...")  # Log parcial
+                twilio.send_whatsapp_message("Dejame leer el documento ... ", sender_number)
                 message_body = message_body + pdf_text
                 tiene_adjunto = 1
             else:
