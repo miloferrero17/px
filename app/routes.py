@@ -88,7 +88,7 @@ def whatsapp_reply():
                 pdf_text = vision.extract_text_from_pdf(reply_path)
                 pdf_text = vision.resumir_texto_largo(pdf_text)
                 print(f"📄 Texto resumido del PDF:\n{pdf_text[:300]}...")  # Log parcial
-                twilio.send_whatsapp_message("Dejame leer el documento ... ", sender_number)
+                #twilio.send_whatsapp_message("Dejame leer el documento ... ", sender_number)
                 message_body = message_body + pdf_text
                 tiene_adjunto = 1
             else:
@@ -126,7 +126,7 @@ def download_file(media_url: str, file_path: str) -> str:
         response.raise_for_status()
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
+    
         with open(file_path, 'wb') as f:
             f.write(response.content)
 

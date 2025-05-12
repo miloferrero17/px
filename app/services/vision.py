@@ -124,6 +124,8 @@ def extract_text_from_pdf(pdf_path, max_chars=1000):
     except Exception as e:
         return f"❌ Error al procesar el PDF: {str(e)}"
 
+
+'''
 if __name__ == "__main__":
     pdf_path = "app/temp/LBLB722077HG.pdf"
     texto = extract_text_from_pdf(pdf_path)
@@ -133,7 +135,7 @@ if __name__ == "__main__":
 
 
 
-'''
+
 import os
 import base64
 import pdfplumber
