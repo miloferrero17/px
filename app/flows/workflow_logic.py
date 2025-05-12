@@ -8,7 +8,7 @@ def ejecutar_nodo(nodo_id, variables):
         32: nodo_32,
         33: nodo_33,
         #34: nodo_34,
-        35: nodo_35,
+        #35: nodo_35,
         36: nodo_36,
         37: nodo_37,
         38: nodo_38,
@@ -87,7 +87,7 @@ def nodo_33(variables):
     
     
     return {
-        "nodo_destino": 35,
+        "nodo_destino": 36,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
@@ -113,6 +113,7 @@ def nodo_34(variables):
     }
 '''
 
+'''
 def nodo_35(variables):
     """
     Nodo que decide si tiene sentido pedir una foto al paciente.
@@ -135,7 +136,7 @@ def nodo_35(variables):
 
     if result_str == "0":
         response_text = ""
-        nodo_destino = 39
+        nodo_destino = 38
         subsiguiente = 0
     else:
         print("else")
@@ -152,7 +153,7 @@ def nodo_35(variables):
         "question_id": None,
         "result": "Abierta"
     }
-
+'''
 
 def nodo_36(variables):
     """
@@ -188,7 +189,7 @@ def nodo_36(variables):
     if result1.strip() == "1":
         nodo_destino = 37
     else:
-        nodo_destino = 38
+        nodo_destino = 39
 
     return {
         "nodo_destino": nodo_destino,
