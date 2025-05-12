@@ -39,7 +39,7 @@ def describe_image(image_path):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Por favor describile a un usuario objetivamente los temas criticos de la imagen en 500 caracteres.Habla en 2da persona."},
+                        {"type": "text", "text": "Por favor continua la conversacion con un usuario pensando que el de la foto es el y resumile  los temas criticos de la foto en 500 caracteres para que se entienda fácilmente. Por favor, NO HAGAS PREGUNTAS NI SALUDES"},
                         {
                             "type": "image_url",
                             "image_url": {
@@ -82,7 +82,7 @@ def resumir_texto_largo(texto_original, max_tokens=300):
             messages=[
                 {
                     "role": "user",
-                    "content": f"Por favor resumile al usuario los temas criticos del documento en 500 caracteres para que se entienda fácilmente. Habla en 2da persona.\n\n{texto_original}"
+                    "content": f"Por favor continua la conversacion con un usuario pensando que el archivo pdf es de el y resumile  los temas criticos del documento en 500 caracteres para que se entienda fácilmente. Por favor, NO HAGAS PREGUNTAS NI SALUDES\n\n{texto_original}"
                 }
             ],
             temperature=0

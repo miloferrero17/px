@@ -214,7 +214,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
             phone=numero_limpio
         )
         print("1) Contacto creado")
-        twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. 1) Hunitro; 2) PX - Recepcion; 3) PX - Guardia; 4) PX - WA; 5) Growcast - Sales. Ingresa solo un numero.", to, None)    
+        twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
         return "Ok"
 
 

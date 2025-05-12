@@ -9,3 +9,4 @@ __pycache__/
 
 # Otros
 .DS_Store
+.serverless
