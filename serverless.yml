@@ -4,9 +4,9 @@ provider:
   name: aws
   runtime: python3.9
   region: us-east-1
-  stage: ${opt:stage, 'dev'}  # Usa dev si no pasás --stage
+  stage: ${opt:stage, 'dev'}
   environment:
-    ENV: ${opt:stage, 'dev'}  # Para usar en tu código Python
+    ENV: ${opt:stage, 'dev'}
     OPENAI_API_KEY: ${env:OPENAI_API_KEY}
     SUPABASE_URL: ${env:SUPABASE_URL}
     SUPABASE_API_KEY: ${env:SUPABASE_API_KEY}
@@ -14,13 +14,19 @@ provider:
     TWILIO_AUTH_TOKEN: ${env:TWILIO_AUTH_TOKEN}
     TWILIO_WHATSAPP_NUMBER: ${env:TWILIO_WHATSAPP_NUMBER}
     PINECONE_API_KEY: ${env:PINECONE_API_KEY}
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource:
+        - "arn:aws:s3:::mi-bucket-milito/*"
 
 functions:
   app:
     name: flask-lambda-hello-${opt:stage, 'dev'}-app
     handler: wsgi_handler.handler
-    timeout: 29        # aumenta el límite de ejecución a 30 segundos
-    memorySize: 1024   # opcional: asigna 1 GB de RAM
+    timeout: 29
+    memorySize: 1024
     events:
       - http:
           path: /
@@ -40,3 +46,9 @@ custom:
     packRequirements: false
   pythonRequirements:
     dockerizePip: true
+    slim: true
+    prune: true           # quita paquetes no referenciados en tu código
+    include:
+      - reportlab
+    noDeploy:
+      - boto3             # AWS ya provee boto3 en el runtime

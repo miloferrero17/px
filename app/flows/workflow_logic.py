@@ -437,10 +437,11 @@ def nodo_40(variables):
 
     estudios_list = [line.strip("- ").strip() for line in estudios_raw.strip().split("\n") if line.strip()]
 
-    contacto = ctt.get_by_phone(numero_limpio)
     doctor = {
         "nombre": "DR AGUSTIN FERNANDEZ VIÑA",
+        "especialidad": "MÉDICO ESPECIALISTA EN DIAGNÓSTICO",
         "matricula": "140.100",
+        "email": "agustinfvinadxi@gmail.com",
         "logo_url": "https://web.innovamed.com.ar/hubfs/LOGO%20A%20COLOR%20SOLO-2.png"
     }
     paciente = {
@@ -455,7 +456,7 @@ def nodo_40(variables):
 
     diagnostico = "Se solicita realización de los estudios indicados para evaluación médica."
     fecha = datetime.now().strftime("%d/%m/%Y")
-    output_pdf = f"app/temp/receta_estudios_{numero_limpio}_{timestamp}.pdf"
+    output_pdf = f"/tmp/receta_estudios_{numero_limpio}_{timestamp}.pdf"
 
     generate_recipe_pdf_from_data(
         doctor=doctor,
@@ -466,11 +467,11 @@ def nodo_40(variables):
         output_pdf=output_pdf
     )
 
-    url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=output_pdf)
-    print(url)
+
+
+    url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=f"recetas/receta_estudios_{numero_limpio}_{timestamp}.pdf")
     twilio.send_whatsapp_message("Tus recetas:", sender_number, url)
 
-    #twilio.send_whatsapp_message("📄 Ya tengo tu receta con los estudios indicados. Pronto te la comparto.", sender_number, None)
 
     return {
         "nodo_destino": 32,
