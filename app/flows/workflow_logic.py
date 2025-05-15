@@ -16,7 +16,9 @@ def ejecutar_nodo(nodo_id, variables):
         40: nodo_40,
         100: nodo_100,
         101: nodo_101,
-        #102: nodo_102,
+        102: nodo_102,
+        103: nodo_103,
+        104: nodo_104,
     }
     return NODOS[nodo_id](variables)
 
@@ -404,14 +406,14 @@ def nodo_40(variables):
     numero_limpio = variables["numero_limpio"]
     sender_number = "whatsapp:+" + numero_limpio
 
-    twilio.send_whatsapp_message("Un momento, estoy viendo qué estudios podrías necesitar...", sender_number, None)
+    twilio.send_whatsapp_message("Un momento, estoy escribiendo tus ordenes y recetas...", sender_number, None)
 
     conversation_history = variables["conversation_history"]
 
     conversation_history.append({
         "role": "system",
         "content": (
-            "Por favor, generá una lista de estudios médicos mandatorios que el paciente debería realizar antes de ver al médico, "
+            "Por favor, generá una lista de estudios médicos mandatorios que el paciente debería realizar ANTES de ver al médico, "
             "en base al historial anterior. Hay dos posibles respuestas: 1) Listado de estudios separado por enter y comenzando con - "
             "sin introducción ni desenlace, listos para ser escritos en una receta; o 2) el número 0 si no hace falta hacer ningún estudio antes de ver al médico."
         )
@@ -420,19 +422,15 @@ def nodo_40(variables):
     estudios_raw = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
 
 
-
-
-
     if estudios_raw.strip() == "0":
-        twilio.send_whatsapp_message("✅ No hace falta que te realices estudios antes de ver al médico.", sender_number, None)
         return {
             "nodo_destino": 32,
             "subsiguiente": 1,
             "conversation_str": json.dumps(conversation_history),
-            "response_text": estudios_raw,
+            "response_text": "Chau",
             "group_id": None,
             "question_id": None,
-            "result": "Sin estudios"
+            "result": "Cerrada"
         }
 
     estudios_list = [line.strip("- ").strip() for line in estudios_raw.strip().split("\n") if line.strip()]
@@ -470,18 +468,19 @@ def nodo_40(variables):
 
 
     url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=f"recetas/receta_estudios_{numero_limpio}_{timestamp}.pdf")
-    twilio.send_whatsapp_message("Tus recetas:", sender_number, url)
+    #twilio.send_whatsapp_message("Tus recetas:", sender_number, url)
 
 
     return {
         "nodo_destino": 32,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
-        "response_text": estudios_raw,
+        "response_text": "Tus ordenes y recetas",
         "pdf_path": output_pdf,
         "group_id": None,
         "question_id": None,
-        "result": "Receta generada"
+        "result": "Cerrada",
+        "url": url
     }
 
 
@@ -504,6 +503,98 @@ def nodo_40(variables):
 #############################################################
 # HUNITRO
 #############################################################
+
+#############################################################
+# Hunitro - Flujo de Relevamiento de Producto
+# Codificación: 1XX
+#############################################################
+
+def nodo_100(variables):
+    """
+    ¿Sabés qué querés importar?
+    """
+    response_text = "¿Sabés qué producto querés importar? 🧐 Respondé con 'sí' o 'no'."
+    return {
+        "nodo_destino": 101,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "result": "Abierta"
+    }
+
+
+def nodo_101(variables):
+    """
+    ¿Tenés la hoja de producto y/o proforma?
+    """
+    respuesta = variables["body"].strip().lower()
+    if "no" in respuesta:
+        return {
+            "nodo_destino": 102,
+            "subsiguiente": 1,
+            "conversation_str": variables.get("conversation_str", ""),
+            "response_text": "¿Podés describir el producto? Función, dimensiones, peso y materiales. 💡",
+            "result": "Abierta"
+        }
+    else:
+        return {
+            "nodo_destino": 104,
+            "subsiguiente": 1,
+            "conversation_str": variables.get("conversation_str", ""),
+            "response_text": "Perfecto, con la hoja de producto ya podemos avanzar. ✅",
+            "result": "Cerrada"
+        }
+
+
+def nodo_102(variables):
+    """
+    Pregunta descriptiva si no tiene proforma/hoja.
+    """
+    respuesta = variables["body"].strip().lower()
+    if any(palabra in respuesta for palabra in ["no", "ni idea", "tampoco"]):
+        return {
+            "nodo_destino": 103,
+            "subsiguiente": 1,
+            "conversation_str": variables.get("conversation_str", ""),
+            "response_text": "No hay problema, te ayudamos con una asesoría personalizada. 🧠",
+            "result": "Cerrada"
+        }
+    else:
+        return {
+            "nodo_destino": 104,
+            "subsiguiente": 1,
+            "conversation_str": variables.get("conversation_str", ""),
+            "response_text": "Gracias por la descripción, ya podemos trabajar con eso. 🙌",
+            "result": "Cerrada"
+        }
+
+
+def nodo_103(variables):
+    """
+    Rama de asesoría.
+    """
+    return {
+        "nodo_destino": 104,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": "Fin de la etapa de producto. Nuestro equipo te va a contactar para ayudarte a definir mejor lo que necesitás. 📞",
+        "result": "Cerrada"
+    }
+
+
+def nodo_104(variables):
+    """
+    Fin de la etapa.
+    """
+    return {
+        "nodo_destino": None,
+        "subsiguiente": 0,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": "Fin de la Etapa 1 - Producto. 🚀 Seguimos con el paso siguiente.",
+        "result": "Cerrada"
+    }
+
+'''
 
 
 
@@ -590,3 +681,4 @@ def nodo_101(variables):
         "question_id": "",
         "result": "Cerrada"
     }
+'''

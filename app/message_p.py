@@ -85,6 +85,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     question_name =""
     contacto = ""
     result = ""
+    url = ""
     subsiguiente = 0
     conversation_str = ""
     conversation_history = [{"role": "system", "content": ""}]
@@ -360,7 +361,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     "question_name": question_name,
                     "question_id": question_id,
                     "group_id":group_id,
-                    "event_id":event_id
+                    "event_id":event_id,
+                    "url":url
                 }
 
             while True:
@@ -386,7 +388,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
             print(variables.get("response_text"))
             #mensaje = msj.get_latest_by_phone(numero_limpio)
             mensaje_a_enviar = variables.get("response_text") or "Hubo un problema interno. Por favor intentá más tarde."
-            twilio.send_whatsapp_message(mensaje_a_enviar, to, None)
+            twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
 
             open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
             #print(open_tx_id)
@@ -430,4 +432,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("TOBILLO QUEBRADO", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("si", "whatsapp:+5491133585362",  0, "", "","", "","",)
