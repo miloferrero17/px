@@ -519,7 +519,7 @@ def nodo_100(variables):
     numero_limpio = variables["numero_limpio"]
     contacto = ctt.get_by_phone(numero_limpio)    
     conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-    listen_and_speak = ("Necesito que solo escribas una respuesta en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "- saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Podrias compartirme, si la tenes, una hoja de producto?")
+    listen_and_speak = ("Necesito que solo escribas una respuesta informal y con 2 emojis en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "- saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Podrias compartirme, si la tenes, una hoja de producto?")
     messages = [{"role": "user", "content": listen_and_speak}]
     response_text = brain.ask_openai(messages)
     
@@ -531,5 +531,5 @@ def nodo_100(variables):
         "response_text": response_text,
         "group_id": None,
         "question_id": None,
-        "result": "Abierta"
+        "result": "Cerrada"
     }
