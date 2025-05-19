@@ -1,11 +1,11 @@
-🧠 Conversational Engine
+#🧠 Conversational Engine
 Motor conversacional basado en GPT-4, diseñado para ejecutar tareas rápidas, responder automáticamente y operar en modo WhatsApp. Soporta múltiples modos de interacción y lógica dinámica definida por el usuario.
 
-🧪 Modo de uso
+#🧪 Modo de uso
 1. Escribirle a este numero +14155238886 este mensaje join while-widely   
 2. Seguir las instrucciones
 
-🚀 Características principales
+#🚀 Características principales
   🔁 Integración con WhatsApp vía Twilio.
   🧠 Procesamiento de lenguaje natural usando OpenAI GPT-4.
   🧩 Lógica dinámica ejecutada desde base de datos o funciones definidas.
