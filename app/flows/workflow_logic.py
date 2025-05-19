@@ -15,10 +15,10 @@ def ejecutar_nodo(nodo_id, variables):
         39: nodo_39,
         40: nodo_40,
         100: nodo_100,
-        101: nodo_101,
-        102: nodo_102,
-        103: nodo_103,
-        104: nodo_104,
+        #101: nodo_101,
+        #102: nodo_102,
+        #103: nodo_103,
+        #104: nodo_104,
     }
     return NODOS[nodo_id](variables)
 
@@ -411,11 +411,8 @@ def nodo_40(variables):
     conversation_history = variables["conversation_history"]
 
     conversation_history.append({
-        "role": "system",
-        "content": (
-            "Por favor, generá una lista de estudios médicos mandatorios que el paciente debería realizar ANTES de ver al médico, "
-            "en base al historial anterior. Hay dos posibles respuestas: 1) Listado de estudios separado por enter y comenzando con - "
-            "sin introducción ni desenlace, listos para ser escritos en una receta; o 2) el número 0 si no hace falta hacer ningún estudio antes de ver al médico."
+        "role": "assistant",
+        "content": ("Por favor genera un reporte pormenorizado para el medico que va a atender al paciente con la logica de los posibles diagnosticos y la lógica que te hizo llegar a ellos"
         )
     })
 
@@ -436,7 +433,7 @@ def nodo_40(variables):
     estudios_list = [line.strip("- ").strip() for line in estudios_raw.strip().split("\n") if line.strip()]
 
     doctor = {
-        "nombre": "DR AGUSTIN FERNANDEZ VIÑA",
+        "nombre": "AGUSTIN FERNANDEZ VIÑA",
         "especialidad": "MÉDICO ESPECIALISTA EN DIAGNÓSTICO",
         "matricula": "140.100",
         "email": "agustinfvinadxi@gmail.com",
@@ -464,7 +461,6 @@ def nodo_40(variables):
         fecha=fecha,
         output_pdf=output_pdf
     )
-
 
 
     url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=f"recetas/receta_estudios_{numero_limpio}_{timestamp}.pdf")
@@ -509,176 +505,31 @@ def nodo_40(variables):
 # Codificación: 1XX
 #############################################################
 
-def nodo_100(variables):
-    """
-    ¿Sabés qué querés importar?
-    """
-    response_text = "¿Sabés qué producto querés importar? 🧐 Respondé con 'sí' o 'no'."
-    return {
-        "nodo_destino": 101,
-        "subsiguiente": 1,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": response_text,
-        "result": "Abierta"
-    }
-
-
-def nodo_101(variables):
-    """
-    ¿Tenés la hoja de producto y/o proforma?
-    """
-    respuesta = variables["body"].strip().lower()
-    if "no" in respuesta:
-        return {
-            "nodo_destino": 102,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "¿Podés describir el producto? Función, dimensiones, peso y materiales. 💡",
-            "result": "Abierta"
-        }
-    else:
-        return {
-            "nodo_destino": 104,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "Perfecto, con la hoja de producto ya podemos avanzar. ✅",
-            "result": "Cerrada"
-        }
-
-
-def nodo_102(variables):
-    """
-    Pregunta descriptiva si no tiene proforma/hoja.
-    """
-    respuesta = variables["body"].strip().lower()
-    if any(palabra in respuesta for palabra in ["no", "ni idea", "tampoco"]):
-        return {
-            "nodo_destino": 103,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "No hay problema, te ayudamos con una asesoría personalizada. 🧠",
-            "result": "Cerrada"
-        }
-    else:
-        return {
-            "nodo_destino": 104,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "Gracias por la descripción, ya podemos trabajar con eso. 🙌",
-            "result": "Cerrada"
-        }
-
-
-def nodo_103(variables):
-    """
-    Rama de asesoría.
-    """
-    return {
-        "nodo_destino": 104,
-        "subsiguiente": 1,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": "Fin de la etapa de producto. Nuestro equipo te va a contactar para ayudarte a definir mejor lo que necesitás. 📞",
-        "result": "Cerrada"
-    }
-
-
-def nodo_104(variables):
-    """
-    Fin de la etapa.
-    """
-    return {
-        "nodo_destino": None,
-        "subsiguiente": 0,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": "Fin de la Etapa 1 - Producto. 🚀 Seguimos con el paso siguiente.",
-        "result": "Cerrada"
-    }
-
-'''
-
-
+#############################################################
+# PX - WA
+#############################################################
 
 def nodo_100(variables):
     """
-    Nodo inicial de bienvenida en el flujo del Hospital Mater Dei.
+    Nodo inicial de bienvenida en el flujo del Hunitro.
     """
     import app.services.brain as brain
-   
-    listen_and_speak = (
-        "Podrias escuchar este mensaje: "+ variables["body"] + "darle la bienvenida al usuario a  Hunitro IA y preguntarle la siguiente pregunta: ¿Sos monotributista o tenes una sociedad?"
-    )
-    
-    messages = [{"role": "assistant", "content": listen_and_speak}]
-    
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    listen_and_speak = ("Necesito que solo escribas una respuesta en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "- saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Podrias compartirme, si la tenes, una hoja de producto?")
+    messages = [{"role": "user", "content": listen_and_speak}]
     response_text = brain.ask_openai(messages)
-    print(response_text)
-    group_id = 12
+    
+    
     return {
-        "nodo_destino": 101,
+        "nodo_destino": 100,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
-        "group_id": group_id,
+        "group_id": None,
         "question_id": None,
         "result": "Abierta"
     }
-
-
-def nodo_101(variables):
-    """
-    Nodo "Sherlock" para Hunitro: hace un interrogatorio según el grupo de preguntas.
-    """
-    import app.services.twilio_service as twilio
-    from app.Model.questions import Questions
-    from app.Model.messages import Messages
-
-    qs = Questions()
-    msj = Messages()
-    numero = variables["numero_limpio"]
-    ultimo = msj.get_penultimate_by_phone(numero)
-    print(ultimo)
-
-
-    # Obtener ids de preguntas del grupo
-    question_ids = qs.get_question_ids_by_group_id(ultimo.group_id)
-    #print(question_ids)
-    # Obtener el último mensaje del usuario
-    #ultimo = msj.get_penultimate_by_phone(numero)
-    last_qid = ultimo.question_id if ultimo else 0
-    print(last_qid)
-
-    if last_qid is None:
-        # Primera pregunta
-        next_qid = question_ids[0]
-    else:
-        # Siguiente pregunta o fin
-        nxt = qs.get_next_question_id(last_qid)
-        if nxt == "No existe":
-            # Fin del interrogatorio
-            return {
-                "nodo_destino": 103,
-                "subsiguiente": 0,
-                "conversation_str": variables.get("conversation_str", ""),
-                "response_text": "Fin del interrogatorio.",
-                "group_id": variables["group_id"],
-                "question_id": None,
-                "result": "Abierta"
-            }
-        next_qid = nxt
-
-    # Obtener texto de la pregunta
-    #pregunta = qs.get_question_name_by_id(next_qid)
-    #sender = "whatsapp:+" + numero
-    # Enviar la pregunta
-    #twilio.send_whatsapp_message(pregunta, sender, None)
-
-    return {
-        "nodo_destino": 101,
-        "subsiguiente": 1,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": pregunta,
-        "group_id": "",
-        "question_id": "",
-        "result": "Cerrada"
-    }
-'''

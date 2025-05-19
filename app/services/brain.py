@@ -37,4 +37,3 @@ def ask_openai(messages, temperature=0, model="gpt-4o-2024-08-06"):
             return "No se pudo generar una respuesta. Intenta de nuevo."
     except openai.error.OpenAIError as e:
         raise RuntimeError(f"Error en la API de OpenAI: {e}")
-

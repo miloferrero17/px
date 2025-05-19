@@ -40,7 +40,7 @@ def generate_recipe_pdf_from_data(
             story.append(Paragraph("⚠️ Error al cargar el logo", styles["Normal"]))
 
     # Título
-    story.append(Paragraph("RECETA MÉDICA", styles["Title"]))
+    story.append(Paragraph("ORDEN DE DERIVACIÓN", styles["Title"]))
     story.append(Spacer(1, 12))
 
     # Datos del médico
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         "especialidad": "MÉDICO ESPECIALISTA EN DIAGNÓSTICO",
         "matricula": "140.100",
         "email": "agustinfvinadxi@gmail.com",
-        "logo_url": "https://web.innovamed.com.ar/hubfs/LOGO%20A%20COLOR%20SOLO-2.png"
+        "logo_url": ""
     }
 
     paciente = {
