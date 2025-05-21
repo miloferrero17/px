@@ -432,4 +432,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("HOLA", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("2 MTS X 1 MTS; 100KG", "whatsapp:+5491133585362",  0, "", "","", "","",)

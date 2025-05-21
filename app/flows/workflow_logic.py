@@ -15,8 +15,8 @@ def ejecutar_nodo(nodo_id, variables):
         39: nodo_39,
         40: nodo_40,
         100: nodo_100,
-        #101: nodo_101,
-        #102: nodo_102,
+        101: nodo_101,
+        102: nodo_102,
         #103: nodo_103,
         #104: nodo_104,
     }
@@ -289,7 +289,7 @@ def nodo_38(variables):
     question_id_str = builtins.str(question_id)
 
     if question_id == 1:
-        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas."
+        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas para entender mejor que te anda pasando ."
         twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
 
     if question_id > max_preguntas:
@@ -519,17 +519,212 @@ def nodo_100(variables):
     numero_limpio = variables["numero_limpio"]
     contacto = ctt.get_by_phone(numero_limpio)    
     conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-    listen_and_speak = ("Necesito que solo escribas una respuesta informal y con 2 emojis en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "- saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Podrias compartirme, si la tenes, una hoja de producto?")
+    
+    listen_and_speak = ("Necesito que solo escribas una respuesta informal y con 2 emojis en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "darle un: - saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Sabes que queres importar?")
     messages = [{"role": "user", "content": listen_and_speak}]
     response_text = brain.ask_openai(messages)
     
     
     return {
-        "nodo_destino": 100,
+        "nodo_destino": 101,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
         "group_id": None,
         "question_id": None,
-        "result": "Cerrada"
+        "result": "Abierta"
     }
+
+
+def nodo_101(variables):
+    """
+    Nodo que decide si el usuario sabe que importar.
+    """
+    import app.services.brain as brain
+    import json
+    import app.services.brain as brain
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+
+
+    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "ver si el cliente sabe que importar. en caso positivo responder 1 y en caso negativo 0")
+    messages = [{"role": "user", "content": listen_and_speak}]
+    sabe_que_importar = brain.ask_openai(messages)
+    print(sabe_que_importar)
+    
+    if sabe_que_importar == "1":
+        nodo_destino = 102
+         
+    else:
+        nodo_destino = 103
+
+    
+    print(nodo_destino)
+    return {
+        "nodo_destino": nodo_destino,
+        "subsiguiente": 0,
+        "conversation_str": conversation_str,
+        "response_text": "",
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+
+    }
+
+
+def nodo_102(variables):
+    """
+    Nodo "Sherlock": hace preguntas activas al cliente usando GPT para completar la busqueda de la posicion arancelaria.
+    """
+    import json
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import builtins
+
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    msj = variables["msj"]
+    ev = variables["ev"]
+    numero_limpio = variables["numero_limpio"]
+
+    sender_number = "whatsapp:+" + numero_limpio
+    contacto = ctt.get_by_phone(numero_limpio)
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    conversation_history = json.loads(conversation_str) if conversation_str else []
+
+    event_id = ctt.get_event_id_by_phone(numero_limpio)
+    question_id = msj.get_penultimate_question_id_by_phone(numero_limpio)
+    question_id = question_id + 1 if question_id is not None else 1
+
+    max_preguntas = builtins.int(ev.get_cant_preguntas_by_event_id(event_id))
+    max_preguntas_str = builtins.str(max_preguntas)
+    question_id_str = builtins.str(question_id)
+
+    if question_id == 1:
+        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas para entender mejor que producto queres importar."
+        twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
+
+    if question_id > max_preguntas:
+        return {
+            "nodo_destino": 103,
+            "subsiguiente": 0,
+            "conversation_str": conversation_str,
+            "response_text": "Fin de las preguntas.",
+            "group_id": None,
+            "question_id": question_id,
+            "result": "Abierta"
+        }
+
+    mensaje_def_triage = (
+        "Vas a hacerle " + max_preguntas_str + " preguntas que estés seguro que te entienda a un cliente "
+        "con el objetivo de conocer que posicion arancelaria tiene el producto que quiere importar cubriendo: 1)La hoja de producto; 2)Un detalle de la función principal; 3) El peso; 4) La altura; y a partir de aca las preguntas que mas ayuden a definir la posicion arancelaria de un bien.\n"
+        "En cada iteración debes tomar como historico esto : " + conversation_str + ",\n"
+        "y en base a eso, debes por un lado dar un comentario sobre la última pregunta contestada y por otro lado  diseñar la mejor próxima pregunta utilizando emojis.\n"
+        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
+    )
+    print(mensaje_def_triage)
+
+    conversation_history.append({
+        "role": "assistant",
+        "content": mensaje_def_triage
+    })
+
+    result = brain.ask_openai(conversation_history)
+    response_text = question_id_str + "/" + max_preguntas_str + " - " + result
+
+    return {
+        "nodo_destino": 102,
+        "subsiguiente": 1,
+        "conversation_str": json.dumps(conversation_history),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": question_id,
+        "result": "Abierta"
+    }
+
+
+
+
+
+'''
+def nodo_102(variables):
+    """
+    Nodo que le pide la hoja de producto.
+    """
+    import app.services.brain as brain
+    import json
+    import app.services.brain as brain
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+
+
+    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "hacerle la mejor proxima pregunta ")
+    messages = [{"role": "user", "content": listen_and_speak}]
+    sabe_que_importar = brain.ask_openai(messages)
+    print(sabe_que_importar)
+    
+    nodo_destino = 104
+         
+    
+    print(nodo_destino)
+    return {
+        "nodo_destino": nodo_destino,
+        "subsiguiente": 0,
+        "conversation_str": conversation_str,
+        "response_text": sabe_que_importar,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+
+    }
+
+
+def nodo_104(variables):
+    """
+    Nodo que decide si el usuario compartio una hoja de producto.
+    """
+    import app.services.brain as brain
+    import json
+    import app.services.brain as brain
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+
+
+    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "ver si el historial contiene una hoja de producto o similar; en caso positivo responder 1 y en caso negativo 0")
+    messages = [{"role": "user", "content": listen_and_speak}]
+    attach = brain.ask_openai(messages)
+    print(attach)
+    
+    if attach == "1":
+        response_text = "Attached"
+
+    else:
+        response_text = "Non Attached"    
+
+    nodo_destino = 100
+    
+    #   chequear si todas las preguntas en question_id estan contestadas, caso contrario comenzar a preguntar en orden
+    # else
+    #   comentario positicvo + preguntar en orden sien 
+
+    print(nodo_destino)
+    return {
+        "nodo_destino": nodo_destino,
+        "subsiguiente": 1,
+        "conversation_str": conversation_str,
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+
+    }
+'''
