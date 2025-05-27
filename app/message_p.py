@@ -8,7 +8,7 @@ import json
 from dateutil.parser import isoparse
 import requests
 import time
-
+import os
 
 
 # Módulos de 3eros
@@ -33,10 +33,11 @@ import app.services.decisions as decs
 import app.services.embedding as vector
 from app.services.decisions import next_node_fofoca_sin_logica, limpiar_numero, calcular_diferencia_en_minutos,ejecutar_codigo_guardado
 import app.services.brain as brain
-
+entorno = os.getenv("ENV", "undefined")
 
 def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, transcription, description,pdf_text):
     print(body)
+    #twilio.enviar_mensaje_si_no("+5491133585362")
     print(media_type)
     if tiene_adjunto == 1:
         if media_type.startswith("image"):
@@ -95,7 +96,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     contacto = ctt.get_by_phone(numero_limpio)
 
     #### 1) Reseteo
-    if body in ("R1", "R2", "R3", "R4", "R5"):
+    if body in ("R1", "R2", "R3", "R4", "R5", "R6"):
         event_id = int(body[1:])    # toma desde el índice 1 hasta el final
         msg_key = ev.get_nodo_inicio_by_event_id(event_id)
 
@@ -209,18 +210,31 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
     #### 2) Alta de contacto   
     if contacto is None:        
+        if entorno == "prod":
+            event_id = 4   
+        
         ctt.add(
-            event_id=0, 
+            event_id=event_id, 
             name="Juan",
             phone=numero_limpio
         )
+
         print("1) Contacto creado")
-        twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
-        return "Ok"
+        if (entorno == "undefined" or entorno == "dev"):
+            twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
+            return "Ok"
+        else:
+            msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+            msj.add(
+                msg_key=msg_key,
+                text="Cambio a " + body,
+                phone=numero_limpio,
+                event_id=event_id
+            )
 
 
-
-
+    contacto = ctt.get_by_phone(numero_limpio)
+    
     #### 3) Gestión de sesiones   
     if contacto is not None:        
         event_id = ctt.get_event_id_by_phone(numero_limpio)
@@ -369,7 +383,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                 print("Usted está entrando a:", nodo_destino)
                 contexto_actualizado = ejecutar_nodo(nodo_destino, variables)
                 variables.update(contexto_actualizado)
-                print(variables)
+                #print(variables)
                 # Salida del loop
                 #print(variables.get("conversation_str"))
                 nodo_destino = variables.get("nodo_destino")
@@ -402,7 +416,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     timestamp=formatted_now,
                     event_id=event_id
                 )
-                time.sleep(0.5)
+                time.sleep(2)
                 twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
             else:
                 tx.update(
@@ -432,4 +446,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("2 MTS X 1 MTS; 100KG", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("32359799", "whatsapp:+5491133585362",  0, "", "","", "","",)

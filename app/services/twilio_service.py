@@ -33,6 +33,7 @@ def send_whatsapp_message(body, to, media_url=None):
     try:
         message = client.messages.create(
             from_=f'whatsapp:{twilio_whatsapp_number}',
+            #from_= "+5491162077267",
             body=body,
             to=to,
             media_url=media_url if media_url else None
@@ -70,78 +71,44 @@ def download_file(sender, media_url, media_type, folder):
         print(f"❌ Error al descargar archivo desde {media_url}: {e}")
         return None
 
+def send_whatsapp_buttons_real(to, body, buttons):
+    """
+    Envía un mensaje interactivo de WhatsApp con botones reales usando la API HTTP de Twilio.
+    """
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
 
-'''
-import os
-from twilio.rest import Client
-from datetime import datetime
-from dotenv import load_dotenv
-import requests
-from requests.auth import HTTPBasicAuth
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    payload = {
+        "To": to,
+        "From": f"whatsapp:{twilio_whatsapp_number}",
+        "Body": body,
+        "PersistentAction": ",".join([f"reply:{btn}" for btn in buttons])
+    }
+
+    response = requests.post(url, headers=headers, data=payload, auth=HTTPBasicAuth(account_sid, auth_token))
+
+    if response.status_code == 201:
+        print("✅ Mensaje con botones enviado correctamente.")
+    else:
+        print(f"❌ Error: {response.status_code} - {response.text}")
+
+def enviar_mensaje_si_no(to_number):
 
 
-# Load variables from .env file
-load_dotenv()
-
-# Configuración de Twilio
-account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-twilio_whatsapp_number = os.getenv('TWILIO_WHATSAPP_NUMBER')
-
-# Validación de configuración
-if not account_sid or not auth_token or not twilio_whatsapp_number:
-    raise ValueError(
-        "Configura las variables de entorno TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y TWILIO_WHATSAPP_NUMBER."
+    message = client.messages.create(
+        from_='whatsapp:+14155238886',  # Número de Twilio para WhatsApp
+        to=f'whatsapp:{to_number}',
+        content_sid='HXe63573ff8b82fca080364e4ed927a36c',  # Tu plantilla con botones
+        content_variables='{"1":"Emilio"}'  # Si usaste un placeholder {{1}}, podés reemplazarlo
     )
 
-# Inicialización del cliente Twilio
-client = Client(account_sid, auth_token)
+    print(f"✅ Mensaje enviado. SID: {message.sid}")
+    print(f"📬 Estado del mensaje: {message.status}") 
 
-def send_whatsapp_message(body, to, media_url = None):
-    """
-    Envía un mensaje de WhatsApp utilizando Twilio.
 
-    Parámetros:
-        body (str): Contenido del mensaje.
-        to (str): Número de WhatsApp del destinatario, en formato internacional (e.g., 'whatsapp:+123456789').
-
-    Retorna:
-        Message: Objeto de mensaje Twilio con los detalles del envío.
-
-    Lanza:
-        RuntimeError: Si ocurre algún error al enviar el mensaje.
-    """
-    try:
-        message = client.messages.create(
-            from_=f'whatsapp:{twilio_whatsapp_number}',
-            body=body,
-            to=to,
-            media_url=media_url if media_url else None
-        )
-        return message
-    except Exception as e:
-        raise RuntimeError(f"Error al enviar el mensaje de WhatsApp: {e}")
-    
-
-def download_file(sender, media_url, media_type, folder):
-    """ Descarga y guarda archivos de WhatsApp (audio o imagen) """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    response = requests.get(media_url,
-                            auth=HTTPBasicAuth(account_sid,
-                                              auth_token))
-    if response.status_code == 200:
-        file_extension = media_type.split("/")[-1]
-        file_name = f"{folder}/{sender.replace(':', '_')}_{timestamp}.{file_extension}"
-
-        with open(file_name, "wb") as file:
-            file.write(response.content)
-
-        print(f"✅ Archivo recibido y guardado como {file_name}")
-        return {file_name}
-    else:
-        print(
-            f"⚠️ Error al descargar el archivo. Código HTTP: {response.status_code}"
-        )
-        return f"⚠️ Error al descargar el archivo. Código HTTP: {response.status_code}"
-'''
+# ▶️ Probalo con tus datos
+if __name__ == "__main__":
+    enviar_mensaje_si_no("+5491133585362")

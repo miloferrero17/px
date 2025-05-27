@@ -71,7 +71,7 @@ def describe_image(image_path):
         return f"❌ Error procesando imagen: {str(e)}"
 
 
-def resumir_texto_largo(texto_original, max_tokens=300):
+def resumir_texto_largo(texto_original):
     """
     Usa OpenAI GPT para resumir un texto largo.
     """
@@ -84,7 +84,7 @@ def resumir_texto_largo(texto_original, max_tokens=300):
             messages=[
                 {
                     "role": "user",
-                    "content": f"Por favor continua la conversacion con un usuario pensando que el archivo pdf es de el y resumile  los temas criticos del documento en 500 caracteres para que se entienda fácilmente. Por favor, NO HAGAS PREGUNTAS NI SALUDES.\n\n{texto_original}"
+                    "content": f"Por favor continua la conversacion con un usuario pensando que el archivo pdf es de el y resumile  los temas criticos del documento en 1000 caracteres para que se entienda fácilmente. Por favor, NO HAGAS PREGUNTAS NI SALUDES.\n\n{texto_original}"
                 }
             ],
             temperature=0

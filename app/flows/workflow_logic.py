@@ -1,6 +1,7 @@
 ''' Codificacion de diagramas de flujo:
 0XX - PX - WA
 1XX - Hunitro
+2XX - PX - WA V2
 ''' 
 
 def ejecutar_nodo(nodo_id, variables):
@@ -17,8 +18,11 @@ def ejecutar_nodo(nodo_id, variables):
         100: nodo_100,
         101: nodo_101,
         102: nodo_102,
-        #103: nodo_103,
-        #104: nodo_104,
+        103: nodo_103,
+        104: nodo_104,
+        200: nodo_200,
+        201: nodo_201,
+        202: nodo_202
     }
     return NODOS[nodo_id](variables)
 
@@ -94,7 +98,7 @@ def nodo_33(variables):
     import app.services.brain as brain
    
     listen_and_speak = (
-        "Podrias escuchar este mensaje: "+ variables["body"] + "y responder con esta intencion de: - Saludarlo brevemente de una forma empatica, -presentarte como /el co-piloto del Hospital Mater Dei/ y - pedirle que te cuente más de su patologia"
+        "Podrias escuchar este mensaje: "+ variables["body"] + "y responder con esta intencion de: - Saludarlo brevemente de una forma empatica, -presentarte como /el co-piloto del PX/ y - pedirle que te cuente más de su patologia"
     )
     
     messages = [{"role": "user", "content": listen_and_speak}]
@@ -406,13 +410,13 @@ def nodo_40(variables):
     numero_limpio = variables["numero_limpio"]
     sender_number = "whatsapp:+" + numero_limpio
 
-    twilio.send_whatsapp_message("Un momento, estoy escribiendo tus ordenes y recetas...", sender_number, None)
+    twilio.send_whatsapp_message("Un momento, estoy escribiendo el detalle de mi analisis para que lo puedas leer ...", sender_number, None)
 
     conversation_history = variables["conversation_history"]
 
     conversation_history.append({
         "role": "assistant",
-        "content": ("Por favor genera un reporte pormenorizado para el medico que va a atender al paciente con la logica de los posibles diagnosticos y la lógica que te hizo llegar a ellos"
+        "content": ("Por favor genera un reporte pormenorizado para que el usuario pueda ver con mayor detalle el analisis que hizo el medico con la logica de los posibles diagnosticos, la lógica que te hizo llegar a ellos y un detalle pormenorizado de que sigue. Hacelo de 1 carilla y media A4"
         )
     })
 
@@ -471,7 +475,7 @@ def nodo_40(variables):
         "nodo_destino": 32,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
-        "response_text": "Tus ordenes y recetas",
+        "response_text": "Mi criterio médico",
         "pdf_path": output_pdf,
         "group_id": None,
         "question_id": None,
@@ -519,10 +523,14 @@ def nodo_100(variables):
     numero_limpio = variables["numero_limpio"]
     contacto = ctt.get_by_phone(numero_limpio)    
     conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-    
-    listen_and_speak = ("Necesito que solo escribas una respuesta informal y con 2 emojis en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "darle un: - saludo empatico; -presentacion como el asistente GPT de Hunitro y - ¿Sabes que queres importar?")
-    messages = [{"role": "user", "content": listen_and_speak}]
-    response_text = brain.ask_openai(messages)
+    conversation_history = variables["conversation_history"]
+
+    conversation_history.append({
+        "role": "assistant",
+        "content": ("Necesito que solo escribas una respuesta informal y con 2 emojis en base a los lineamientos que voy a darte. Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "darle un: - saludo empatico; -presentacion como el asistente Nacho el co-piloto de Hunitro y - Preguntar si: ¿Sabes que queres importar?"
+        )
+    })
+    response_text = brain.ask_openai(conversation_history)
     
     
     return {
@@ -548,18 +556,22 @@ def nodo_101(variables):
     numero_limpio = variables["numero_limpio"]
     contacto = ctt.get_by_phone(numero_limpio)    
     conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    conversation_history = variables["conversation_history"]
 
+    conversation_history.append({
+        "role": "system",
+        "content": ("En caso que estes seguro que no sepa que importar responde 0 y en cualquier otro caso 1"
+        )
+    })
 
-    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "ver si el cliente sabe que importar. en caso positivo responder 1 y en caso negativo 0")
-    messages = [{"role": "user", "content": listen_and_speak}]
-    sabe_que_importar = brain.ask_openai(messages)
+    sabe_que_importar = brain.ask_openai(conversation_history)
     print(sabe_que_importar)
     
     if sabe_que_importar == "1":
         nodo_destino = 102
          
     else:
-        nodo_destino = 103
+        nodo_destino = 104
 
     
     print(nodo_destino)
@@ -620,9 +632,8 @@ def nodo_102(variables):
 
     mensaje_def_triage = (
         "Vas a hacerle " + max_preguntas_str + " preguntas que estés seguro que te entienda a un cliente "
-        "con el objetivo de conocer que posicion arancelaria tiene el producto que quiere importar cubriendo: 1)La hoja de producto; 2)Un detalle de la función principal; 3) El peso; 4) La altura; y a partir de aca las preguntas que mas ayuden a definir la posicion arancelaria de un bien.\n"
+        "con el objetivo de conocer que posicion arancelaria tiene el producto que quiere importar. En todos los casos vas a hacer primero un comentario sobre la ultima respuesta del usuario y una pregunta cubriendo lo siguiente: 1) La hoja de producto; 2)Un detalle de la función principal; 3) El peso; 4) Las dimensiones ; y a partir de aca las preguntas que mas ayuden a definir la posicion arancelaria de un bien.\n"
         "En cada iteración debes tomar como historico esto : " + conversation_str + ",\n"
-        "y en base a eso, debes por un lado dar un comentario sobre la última pregunta contestada y por otro lado  diseñar la mejor próxima pregunta utilizando emojis.\n"
         "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
     )
     print(mensaje_def_triage)
@@ -647,7 +658,71 @@ def nodo_102(variables):
 
 
 
+def nodo_103(variables):
+    """
+    Nodo de generación de reporte médico final usando el historial de conversación.
+    """
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import json
 
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    ev = variables["ev"]
+    numero_limpio = variables["numero_limpio"]
+
+    sender_number = "whatsapp:+" + numero_limpio
+    twilio.send_whatsapp_message("Estoy pensando, dame unos segundos...", sender_number, None)
+
+    conversation_history = variables["conversation_history"]
+    #print(conversation_history)
+
+    contacto = ctt.get_by_phone(numero_limpio)
+    event_id = ctt.get_event_id_by_phone(numero_limpio)
+    mensaje_reporte = ev.get_reporte_by_event_id(event_id)
+
+
+    conversation_history.append({
+        "role": "system",
+        "content": "Hace unicamente el Reporte 1 - Producto: " + mensaje_reporte
+    })
+
+    response_text = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
+
+    return {
+        "nodo_destino": 100,
+        "subsiguiente": 1,
+        "conversation_str": json.dumps(conversation_history),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+    }
+
+
+def nodo_104(variables):
+    """
+    Nodo sobre conversación de que importar.
+    """
+    import app.services.brain as brain
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    
+    response_text = "¿Qué te parece agendar una sesión con Ignacio para descubrir juntos lo mejor que podés importar? 💡🌎"
+    
+    
+    return {
+        "nodo_destino": 100,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+    }
 
 '''
 def nodo_102(variables):
@@ -728,3 +803,167 @@ def nodo_104(variables):
 
     }
 '''
+
+
+def nodo_200(variables):
+    """
+    Nodo que decide si el paciente necesita intervención médica urgente.
+    Usa el historial de conversación para preguntarle a OpenAI.
+    """
+    import app.services.brain as brain
+    import json
+
+    #print(variables["conversation_str"])
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+
+    contacto = ctt.get_by_phone(numero_limpio)
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    conversation_history = json.loads(conversation_str) if conversation_str else []
+
+    
+    mensaje_urgencia = (
+        "En base únicamente a la respuesta: " + variables["body"] +
+        "¿La frase es gramaticalmente correcta, coherente y tiene sentido completo?"
+        "Responde únicamente con el número: 1 si es afirmativo, 0 si no lo es."
+    )
+
+    mensaje_urgencia_dic = [{
+        "role": "system",
+        "content":mensaje_urgencia
+    }]
+    print(mensaje_urgencia_dic)
+    
+    result1 = brain.ask_openai(mensaje_urgencia_dic)
+
+    if result1.strip() == "1":
+        nodo_destino = 201
+    else:
+        nodo_destino = 202
+
+    print(nodo_destino)
+    return {
+        "nodo_destino": nodo_destino,
+        "subsiguiente": 0,
+        "conversation_str": conversation_str,
+        "response_text": "",
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+
+    }
+
+def nodo_201(variables):
+    """
+    Nodo de preguntas y respuestas principal.
+    Usa el historial de conversación para preguntarle a OpenAI.
+    """
+    import json
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import builtins
+
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    msj = variables["msj"]
+    ev = variables["ev"]
+    numero_limpio = variables["numero_limpio"]
+
+    sender_number = "whatsapp:+" + numero_limpio
+    contacto = ctt.get_by_phone(numero_limpio)
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    conversation_history = json.loads(conversation_str) if conversation_str else []
+
+    event_id = ctt.get_event_id_by_phone(numero_limpio)
+    question_id = msj.get_penultimate_question_id_by_phone(numero_limpio)
+    question_id = question_id + 1 if question_id is not None else 1
+
+    max_preguntas = builtins.int(ev.get_cant_preguntas_by_event_id(event_id))
+    max_preguntas_str = builtins.str(max_preguntas)
+    question_id_str = builtins.str(question_id)
+
+    if question_id == 1:
+        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas para entender mejor que producto queres importar."
+        twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
+
+    if question_id > max_preguntas:
+        return {
+            "nodo_destino": 200,
+            "subsiguiente": 0,
+            "conversation_str": conversation_str,
+            "response_text": "Fin de las preguntas.",
+            "group_id": None,
+            "question_id": question_id,
+            "result": "Cerrada"
+        }
+    preguntas_mandatorias = (
+        "1. DNI del paciente"
+        "2. Historial clinico"
+        "3. Cuadro general del paciente"
+    )
+
+    mensaje_def_triage = (
+        "Vas a hacerle " + max_preguntas_str + " preguntas que estés seguro que te entienda a un cliente "
+        "con el objetivo de hacerle un diagnostico médico y asegurando contar con respuestas para las siguietntes preguntas" + preguntas_mandatorias + 
+        "En cada iteración debes tomar como historico esto : " + conversation_str + ",\n"
+        "Podes pedirle que te mande texto, fotos y estudios en pdf"
+        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
+    )
+    print(mensaje_def_triage)
+
+    conversation_history.append({
+        "role": "assistant",
+        "content": mensaje_def_triage
+    })
+
+    result = brain.ask_openai(conversation_history)
+    response_text = question_id_str + "/" + max_preguntas_str + " - " + result
+
+
+
+
+
+    return {
+        "nodo_destino": 201,
+        "subsiguiente": 1,
+        "conversation_str": conversation_str,
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+def nodo_202(variables):
+    """
+    Nodo que re-pregunta al paciente si no le entiende
+    """
+    import app.services.brain as brain
+    import json
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    numero_limpio = variables["numero_limpio"]
+
+    contacto = ctt.get_by_phone(numero_limpio)
+    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    return {
+        "nodo_destino": 200,
+        "subsiguiente": 1,
+        "conversation_str": conversation_str,
+        "response_text": "Perdón, no llegué a entender lo que dijiste, ¿me lo podrías repetir?",
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+
+    }
