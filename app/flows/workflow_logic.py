@@ -20,9 +20,9 @@ def ejecutar_nodo(nodo_id, variables):
         #102: nodo_102,
         103: nodo_103,
         104: nodo_104,
-        200: nodo_200,
+        #200: nodo_200,
         #201: nodo_201,
-        203: nodo_203
+        #203: nodo_203
     }
     return NODOS[nodo_id](variables)
 
@@ -422,7 +422,6 @@ def nodo_40(variables):
 
     estudios_raw = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
 
-
     if estudios_raw.strip() == "0":
         return {
             "nodo_destino": 32,
@@ -470,19 +469,17 @@ def nodo_40(variables):
     url = uploader.subir_a_s3(archivo_local=output_pdf, nombre_en_s3=f"recetas/receta_estudios_{numero_limpio}_{timestamp}.pdf")
     #twilio.send_whatsapp_message("Tus recetas:", sender_number, url)
 
-
     return {
         "nodo_destino": 32,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
-        "response_text": "Mi criterio médico",
+        "response_text": "Criterio médico. Estas 2do en la fila, en 13 minutos te va a llamar un médico.",
         "pdf_path": output_pdf,
         "group_id": None,
         "question_id": None,
         "result": "Cerrada",
         "url": url
     }
-
 
 
 

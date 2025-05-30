@@ -416,8 +416,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     timestamp=formatted_now,
                     event_id=event_id
                 )
-                time.sleep(2)
-                twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
+                #time.sleep(2)
+                #twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
             else:
                 tx.update(
                     id=open_tx_id,
