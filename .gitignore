@@ -1,12 +1,30 @@
-# Archivos de configuración con claves
+# --- Archivos de configuración con claves ---
 .env
 .env.*
 sandbox.py
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
 
-# Otros
+# Entornos virtuales
+venv/
+.venv/
+
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Serverless ---
+.serverless/
+
+# --- macOS ---
 .DS_Store
-.serverless
+
+# --- Otros temporales ---
+tmp/
+*.log
+*.out
+*.tmp

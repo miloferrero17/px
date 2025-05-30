@@ -26,6 +26,7 @@ import pikepdf
 import csv
 import tiktoken
 from dataclasses import dataclass
+from pathlib import Path
 
 
 ##################################################
@@ -135,6 +136,43 @@ ENC = tiktoken.get_encoding("cl100k_base")
 MAX_TOKENS = 8191  # Límite de tokens para el modelo text-embedding-ada-002
 NAMESPACE = "default"  # Espacio de nombres para Pinecone
 
+def procesar_pdfs_en_carpeta(carpeta_path: str):
+    carpeta = Path(carpeta_path)
+    pdfs = list(carpeta.glob("*.pdf"))
+
+    for pdf_file in pdfs:
+        try:
+            print(f"🧹 Procesando {pdf_file.name}...")
+
+            # Paso 1: extraer texto
+            raw_pages = extract_text(str(pdf_file))
+            
+            # Paso 2: identificar líneas de encabezado/pie ruidosas
+            header_noise, footer_noise = identify_noise_lines(raw_pages)
+            
+            # Paso 3: limpiar
+            cleaned_pages = clean_pages(raw_pages, header_noise, footer_noise)
+            full_text = "\n\n".join(cleaned_pages)
+
+            # Paso 4: normalizar
+            texto_limpio = normalize_text(full_text)
+
+            # Paso 5: guardar como .txt
+            txt_path = pdf_file.with_suffix(".txt")
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(texto_limpio)
+
+            # Paso 6: eliminar el PDF
+            pdf_file.unlink()
+            print(f"✅ Guardado como {txt_path.name} y eliminado el PDF original.")
+        
+        except Exception as e:
+            print(f"❌ Error procesando {pdf_file.name}: {e}")
+
+procesar_pdfs_en_carpeta("app/Model/vector/Manuales Clara IA")
+
+
+'''
 # ------------------------------
 # 2.1) UTILIDADES DE CHUNKING
 # ------------------------------
@@ -329,7 +367,7 @@ def vectorizar_documento(
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     pdf_path = os.path.join(base_dir, "Visa Core Rules.pdf")
-    '''
+    
     # Paso 1: Extraer texto por página
     raw_pages = extract_text(pdf_path)
 
@@ -349,7 +387,7 @@ if __name__ == "__main__":
         f.write(final_text)
 
     print(f"✅ Texto limpio guardado en: {output_path}")
-    '''
+    
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(base_dir, "Visa Core Rules_limpio.txt")
@@ -360,7 +398,7 @@ if __name__ == "__main__":
         index=index,
         namespace="VCR"  # o el namespace que uses
     )
-'''
+
 # ------------------------------
 # 2) VECTORIZACIÓN
 # ------------------------------
@@ -512,3 +550,5 @@ def main():
 if __name__ == "__main__":
     main()
 '''
+
+
