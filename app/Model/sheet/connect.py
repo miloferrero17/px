@@ -3,6 +3,7 @@ import pandas as pd
 from google.oauth2.service_account import Credentials
 import os
 
+
 # Ruta al archivo JSON (ajustada automáticamente)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'gmail-test-429212-6952b26370bf.json')
