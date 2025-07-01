@@ -13,16 +13,18 @@ def ejecutar_nodo(nodo_id, variables):
         36: nodo_36,
         37: nodo_37,
         38: nodo_38,
-        39: nodo_39,
+        #39: nodo_39,
         40: nodo_40,
         100: nodo_100,
         #101: nodo_101,
         #102: nodo_102,
         103: nodo_103,
-        104: nodo_104,
-        #200: nodo_200,
-        #201: nodo_201,
-        #203: nodo_203
+        #104: nodo_104,
+        200: nodo_200,
+        201: nodo_201,
+        202: nodo_202,
+        203: nodo_203,
+        300: nodo_300
     }
     return NODOS[nodo_id](variables)
 
@@ -86,19 +88,18 @@ def nodo_32(variables):
         "group_id": None,
         "question_id": None,
         "result": "Abierta"
-
     }
 
 
 
 def nodo_33(variables):
     """
-    Nodo inicial de bienvenida en el flujo del Hospital Mater Dei.
+    Nodo inicial de bienvenida en el flujo.
     """
     import app.services.brain as brain
-   
+    
     listen_and_speak = (
-        "Podrias escuchar este mensaje: "+ variables["body"] + "y responder con esta intencion de: - Saludarlo brevemente de una forma empatica, -presentarte como /el co-piloto del PX/ y - pedirle que te cuente más de su patologia"
+        "Podrias escuchar este mensaje: "+ variables["body"] + "y responder con esta intencion de: - Saludarlo brevemente de una forma empatica, -presentarte como /el acompañante virtual de PX/ - decirle que podes entender texto, audio, fotos y pdfs; y - pedirle que te cuente más de su patologia"
     )
     
     messages = [{"role": "user", "content": listen_and_speak}]
@@ -208,7 +209,7 @@ def nodo_36(variables):
     if result1.strip() == "1":
         nodo_destino = 37
     else:
-        nodo_destino = 39
+        nodo_destino = 38
 
     return {
         "nodo_destino": nodo_destino,
@@ -254,13 +255,13 @@ def nodo_37(variables):
     response_text = brain.ask_openai(conversation_history, model="gpt-4.1-2025-04-14")
 
     return {
-        "nodo_destino": 40,
+        "nodo_destino": 32,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
         "response_text": response_text,
         "group_id": None,
         "question_id": None,
-        "result": "Abierta"
+        "result": "Cerrado"
     }
 
 
@@ -311,7 +312,7 @@ def nodo_38(variables):
         "Vas a hacerle " + max_preguntas_str + " preguntas que estés seguro que te entienda a un paciente "
         "con el objetivo de diagnosticarlo y darle un consejo sobre qué hacer.\n"
         "En cada iteración debes tomar como historico esto : " + conversation_str + ",\n"
-        "y en base a eso, debes por un lado dar un comentario sobre la última pregunta contestada y por otro lado  diseñar la mejor próxima pregunta utilizando emojis.\n"
+        "y en base a eso, debes por un lado dar un comentario sobre la última pregunta contestada, y por otro lado  diseñar la mejor próxima pregunta utilizando emojis pudiendole pedir UNICAMENTE si es necesario imagenes o pdfs.\n"
         "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
     )
     print(mensaje_def_triage)
@@ -335,6 +336,7 @@ def nodo_38(variables):
         "result": "Abierta"
     }
 
+'''
 def nodo_39(variables):
     """
     Nodo de pregunta de la foto
@@ -349,6 +351,7 @@ def nodo_39(variables):
         "question_id": None,
         "result": "Abierta"
     }
+'''
 
 '''
 def nodo_40(variables):
@@ -520,53 +523,29 @@ def nodo_100(variables):
     conversation_history = variables["conversation_history"]
 
     assistant_text = ev.get_assistant_by_event_id(1)
-
+    print(assistant_text)
+    
     if not assistant_text:
-        raise ValueError("El texto del asistente es None. Verificá ev.get_assistant_by_event_id(2).")
+        raise ValueError("El texto del asistente es None. Verificá ev.get_assistant_by_event_id(1).")
 
     conversation_history.append({
         "role": "assistant",
         "content": assistant_text
     })
 
-    print(conversation_history)
     response_text = brain.ask_openai(conversation_history)
-    print(response_text)
-    # Separar por el punto y coma
-    partes = response_text.split(';')
 
-    if len(partes) != 2:
-        print(f"⚠️ Respuesta inválida: {response_text}")
-        response_text = response_text.strip()
-        valor = 0  # seguir preguntando
-    else:
-        response_text = partes[0].strip()
-        valor = int(partes[1].strip())
-    # Mostrar resultados
 
-    print("Pregunta:", response_text)
-    print("Valor:", valor)
+    return {
+        "nodo_destino": 100,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+    }
     
-    if valor == 0:
-        return {
-            "nodo_destino": 100,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": response_text,
-            "group_id": None,
-            "question_id": None,
-            "result": "Abierta"
-        }
-    else:
-        return {
-            "nodo_destino": 103,
-            "subsiguiente": 0,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "",
-            "group_id": None,
-            "question_id": None,
-            "result": "Abierta"
-        }
 def nodo_103(variables):
     """
     Nodo de generación de reporte de producto.
@@ -609,191 +588,130 @@ def nodo_103(variables):
     }
 
 
-def nodo_104(variables):
+
+
+
+
+
+
+
+#############################################################
+# PX - WA B2B
+#############################################################
+
+def nodo_200(variables):
     """
-    Nodo de preguntas de Etapa 2: Planificación.
-    """
-    import app.services.brain as brain
-    tx = variables["tx"]
-    ctt = variables["ctt"]
-    ev = variables["ev"]
-    numero_limpio = variables["numero_limpio"]
-    contacto = ctt.get_by_phone(numero_limpio)    
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-    conversation_history = variables["conversation_history"]
-
-    assistant_text = "Encara la Etapa 2" + ev.get_assistant_by_event_id(1)
-    print(assistant_text)
-
-    conversation_history.append({
-        "role": "assistant",
-        "content": assistant_text
-    })
-
-    print(conversation_history)
-    response_text = brain.ask_openai(conversation_history)
-    print(response_text)
-    # Separar por el punto y coma
-    partes = response_text.split(';')
-
-    if len(partes) != 2:
-        print(f"⚠️ Respuesta inválida: {response_text}")
-        response_text = response_text.strip()
-        valor = 0  # seguir preguntando
-    else:
-        response_text = partes[0].strip()
-        valor = int(partes[1].strip())
-    # Mostrar resultados
-
-    print("Pregunta:", response_text)
-    print("Valor:", valor)
-    
-    if valor == 0:
-        return {
-            "nodo_destino": 100,
-            "subsiguiente": 1,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": response_text,
-            "group_id": None,
-            "question_id": None,
-            "result": "Abierta"
-        }
-    else:
-        return {
-            "nodo_destino": 103,
-            "subsiguiente": 0,
-            "conversation_str": variables.get("conversation_str", ""),
-            "response_text": "",
-            "group_id": None,
-            "question_id": None,
-            "result": "Abierta"
-        }
-
-'''
-def nodo_102(variables):
-    """
-    Nodo que le pide la hoja de producto.
+    Nodo inicial de bienvenida en el flujo.
     """
     import app.services.brain as brain
-    import json
-    import app.services.brain as brain
-    tx = variables["tx"]
-    ctt = variables["ctt"]
-    numero_limpio = variables["numero_limpio"]
-    contacto = ctt.get_by_phone(numero_limpio)    
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-
-
-    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "hacerle la mejor proxima pregunta ")
-    messages = [{"role": "user", "content": listen_and_speak}]
-    sabe_que_importar = brain.ask_openai(messages)
-    print(sabe_que_importar)
     
-    nodo_destino = 104
-         
+    listen_and_speak = (
+        "Podrias escuchar este mensaje: "+ variables["body"] + "Darle la bienvenida, y responder presentandote como PX y pedile que te de mas detalle de su patologia"
+    )
     
-    print(nodo_destino)
+    messages = [{"role": "assistant", "content": listen_and_speak}]
+    response_text = brain.ask_openai(messages)
+    
+    
     return {
-        "nodo_destino": nodo_destino,
-        "subsiguiente": 0,
-        "conversation_str": conversation_str,
-        "response_text": sabe_que_importar,
-        "group_id": None,
-        "question_id": None,
-        "result": "Abierta"
-
-    }
-
-
-def nodo_104(variables):
-    """
-    Nodo que decide si el usuario compartio una hoja de producto.
-    """
-    import app.services.brain as brain
-    import json
-    import app.services.brain as brain
-    tx = variables["tx"]
-    ctt = variables["ctt"]
-    numero_limpio = variables["numero_limpio"]
-    contacto = ctt.get_by_phone(numero_limpio)    
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-
-
-    listen_and_speak = ("Podrias escuchar este mensaje: "+ variables["body"] + "y teniendo en cuenta este historial" + conversation_str + "ver si el historial contiene una hoja de producto o similar; en caso positivo responder 1 y en caso negativo 0")
-    messages = [{"role": "user", "content": listen_and_speak}]
-    attach = brain.ask_openai(messages)
-    print(attach)
-    
-    if attach == "1":
-        response_text = "Attached"
-
-    else:
-        response_text = "Non Attached"    
-
-    nodo_destino = 100
-    
-    #   chequear si todas las preguntas en question_id estan contestadas, caso contrario comenzar a preguntar en orden
-    # else
-    #   comentario positicvo + preguntar en orden sien 
-
-    print(nodo_destino)
-    return {
-        "nodo_destino": nodo_destino,
+        "nodo_destino": 201,
         "subsiguiente": 1,
-        "conversation_str": conversation_str,
+        "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
         "group_id": None,
         "question_id": None,
-        "result": "Cerrada"
-
+        "result": "Abierta"
     }
 
-def nodo_101(variables):
+
+
+def nodo_201(variables):
     """
-    Nodo que decide si el usuario sabe que importar.
+    Nodo que decide si el paciente necesita intervención médica urgente.
+    Usa el historial de conversación para preguntarle a OpenAI.
     """
     import app.services.brain as brain
     import json
-    import app.services.brain as brain
+
     tx = variables["tx"]
     ctt = variables["ctt"]
     numero_limpio = variables["numero_limpio"]
-    contacto = ctt.get_by_phone(numero_limpio)    
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
-    conversation_history = variables["conversation_history"]
+    conversation_str=variables["conversation_str"]
+    conversation_history = json.loads(conversation_str) if conversation_str else []
 
-    conversation_history.append({
+    mensaje_urgencia = (
+        "En base únicamente a la respuesta: " + variables["conversation_str"] +
+        "¿El caso requiere intervencion medica humana urgente? "
+        "Responde solo con: 1 si la requiere o 0 si necesitás hacer más preguntas para entender mejor la situacion"
+    )
+
+    mensaje_urgencia_dic = [{
         "role": "system",
-        "content": ("En caso que estes seguro que no sepa que importar responde 0 y en cualquier otro caso 1"
-        )
-    })
+        "content":mensaje_urgencia
+    }]
+    result1 = brain.ask_openai(mensaje_urgencia_dic)
 
-    sabe_que_importar = brain.ask_openai(conversation_history)
-    print(sabe_que_importar)
-    
-    if sabe_que_importar == "1":
-        nodo_destino = 102
-         
+    if result1.strip() == "1":
+        nodo_destino = 202
     else:
-        nodo_destino = 104
+        nodo_destino = 203
 
-    
-    print(nodo_destino)
     return {
         "nodo_destino": nodo_destino,
         "subsiguiente": 0,
-        "conversation_str": conversation_str,
+        "conversation_str": variables["conversation_str"],
         "response_text": "",
         "group_id": None,
         "question_id": None,
         "result": "Abierta"
-
     }
 
 
-def nodo_102(variables):
+def nodo_202(variables):
     """
-    Nodo "Sherlock": hace preguntas activas al cliente usando GPT para completar la busqueda de la posicion arancelaria.
+    Nodo de generación de reporte médico final usando el historial de conversación.
+    """
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+    import json
+
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    ev = variables["ev"]
+    numero_limpio = variables["numero_limpio"]
+
+    sender_number = "whatsapp:+" + numero_limpio
+    twilio.send_whatsapp_message("Estoy pensando, dame unos segundos...", sender_number, None)
+
+    conversation_history = variables["conversation_history"]
+    #print(conversation_history)
+
+    contacto = ctt.get_by_phone(numero_limpio)
+    event_id = ctt.get_event_id_by_phone(numero_limpio)
+    mensaje_reporte = ev.get_reporte_by_event_id(event_id)
+
+
+    conversation_history.append({
+        "role": "system",
+        "content": mensaje_reporte
+    })
+
+    response_text = brain.ask_openai(conversation_history)
+
+    return {
+        "nodo_destino": 200,
+        "subsiguiente": 1,
+        "conversation_str": variables["conversation_str"],
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+    }
+
+
+def nodo_203(variables):
+    """
+    Nodo "Sherlock": hace preguntas activas al paciente usando GPT para completar el triage.
     """
     import json
     import app.services.brain as brain
@@ -808,7 +726,8 @@ def nodo_102(variables):
 
     sender_number = "whatsapp:+" + numero_limpio
     contacto = ctt.get_by_phone(numero_limpio)
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+    print(variables["conversation_str"])
+    conversation_str = variables["conversation_str"]
     conversation_history = json.loads(conversation_str) if conversation_str else []
 
     event_id = ctt.get_event_id_by_phone(numero_limpio)
@@ -819,39 +738,45 @@ def nodo_102(variables):
     max_preguntas_str = builtins.str(max_preguntas)
     question_id_str = builtins.str(question_id)
 
-    if question_id == 1:
-        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas para entender mejor que producto queres importar."
+    if question_id_str == "1":
+        mensaje_intro = "Te voy a hacer " + max_preguntas_str + " preguntas para entender mejor que te anda pasando ."
         twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
 
     if question_id > max_preguntas:
         return {
-            "nodo_destino": 103,
+            "nodo_destino": 202,
             "subsiguiente": 0,
             "conversation_str": conversation_str,
-            "response_text": "Fin de las preguntas.",
+            "response_text": "",
             "group_id": None,
             "question_id": question_id,
             "result": "Abierta"
         }
 
-    mensaje_def_triage = (
-        "Vas a hacerle " + max_preguntas_str + " preguntas que estés seguro que te entienda a un cliente "
-        "con el objetivo de conocer que posicion arancelaria tiene el producto que quiere importar. En todos los casos vas a hacer primero un comentario sobre la ultima respuesta del usuario y una pregunta cubriendo lo siguiente: 1) La hoja de producto; 2)Un detalle de la función principal; 3) El peso; 4) Las dimensiones ; y a partir de aca las preguntas que mas ayuden a definir la posicion arancelaria de un bien.\n"
-        "En cada iteración debes tomar como historico esto : " + conversation_str + ",\n"
+    mensaje_def_triage_str = (
+        "Vas a hacerle " + max_preguntas_str + " preguntas con el objetivo de diagnosticarlo medicamente.\n"
+        "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
+        "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos) y tambien de 2 emojis que hagan la conversacion mas fluida.\n"
         "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
     )
-    print(mensaje_def_triage)
+    #print(mensaje_def_triage)
+    
+    mensaje_def_triage = [{
+            "role": "assistant",
+            "content":mensaje_def_triage_str
+        }]
 
+    '''
     conversation_history.append({
         "role": "assistant",
         "content": mensaje_def_triage
     })
-
-    result = brain.ask_openai(conversation_history)
+    '''
+    result = brain.ask_openai(mensaje_def_triage)
     response_text = question_id_str + "/" + max_preguntas_str + " - " + result
 
     return {
-        "nodo_destino": 102,
+        "nodo_destino": 203,
         "subsiguiente": 1,
         "conversation_str": json.dumps(conversation_history),
         "response_text": response_text,
@@ -859,13 +784,57 @@ def nodo_102(variables):
         "question_id": question_id,
         "result": "Abierta"
     }
+
+
+
+#############################################################
+# HUNITRO V2
+#############################################################
+
+#############################################################
+# Hunitro - Flujo de Relevamiento de Producto
+# Codificación: 3XX
+#############################################################
+
+def nodo_300(variables):
+    """
+    Nodo de preguntas de Etapa 1: Producto.
+    """
+    import app.services.brain as brain
+    tx = variables["tx"]
+    ctt = variables["ctt"]
+    ev = variables["ev"]
+    numero_limpio = variables["numero_limpio"]
+    contacto = ctt.get_by_phone(numero_limpio)    
+    conversation_str = variables["conversation_str"]
+    assistant_text = ev.get_assistant_by_event_id(1)
+    print(assistant_text)
     
+    if not assistant_text:
+        raise ValueError("El texto del asistente es None. Verificá ev.get_assistant_by_event_id(1).")
+
+
+    assistant_instruction_str = (
+        "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
+        "y continuar con la próxima sentencia del asistente"
+    )
+
+
+    assistant_instruction = [{
+            "role": "assistant",
+            "content":assistant_instruction_str
+        }]
     
+    response_text = brain.ask_openai(assistant_instruction)
+    print(response_text)
+
+    return {
+        "nodo_destino": 300,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+    }
     
-'''
-
-
-
-
-
-

@@ -46,10 +46,6 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
             twilio.send_whatsapp_message(pdf_text, to, None)    
     
     
-    #url = uploader.subir_a_s3()    
-    #twilio.send_whatsapp_message("Va la receta", to, url)
-
-
     msj = Messages()
     tx = Transactions()
     ev = Events()
@@ -60,9 +56,6 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     now_utc = datetime.now(timezone.utc)
     formatted_now = now_utc.strftime("%Y-%m-%d %H:%M:%S.%f")
 
-    #event_id = msj.get_last_event_id_by_phone(numero_limpio)
-    #print(event_id)
-
     ### 1) Inicializo las variables
     event_id = 0
     msg_key = 0
@@ -72,11 +65,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     next_node_question = ""
     registro = 0
     max_preguntas= 0
-    #ev.get_cant_preguntas_by_event_id(event_id)
-    #print(max_preguntas)
     contexto = ""
-    #ev.get_description_by_event_id(event_id)
-    #print(contexto)
     eng = Engine()
     aux = Messages()
     qs = Questions()
@@ -96,9 +85,11 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     contacto = ctt.get_by_phone(numero_limpio)
 
     #### 1) Reseteo
-    if body in ("R1", "R2", "R3", "R4", "R5", "R6"):
+    if body in ("R1", "R2", "R3", "R4", "R5", "R6", "R7"):
         event_id = int(body[1:])    # toma desde el índice 1 hasta el final
+        print(event_id)
         msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+        print(msg_key)
 
         try: 
             if contacto is None:
@@ -106,7 +97,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                 _new_id = ctt.add(
                     event_id=event_id,
                     name="Juan",
-                    phone=numero_limpio
+                     phone=numero_limpio
                 )
                 # ahora sí traés el objeto completo con su contact_id, nombre, etc.
                 contacto = ctt.get_by_phone(numero_limpio)
@@ -211,7 +202,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     #### 2) Alta de contacto   
     if contacto is None:        
         if entorno == "prod":
-            event_id = 4   
+            event_id = 6   
         
         ctt.add(
             event_id=event_id, 
@@ -220,6 +211,9 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
         )
 
         print("1) Contacto creado")
+        
+        
+        
         if (entorno == "undefined" or entorno == "dev"):
             twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
             return "Ok"
@@ -346,7 +340,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                 "content": body
             })
             conversation_str = json.dumps(conversation_history)
-            print(conversation_str)
+
+            #print(conversation_str)
             nodo_destino = msg_key
             #print(nodo_destino)
 
@@ -385,7 +380,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                 variables.update(contexto_actualizado)
                 #print(variables)
                 # Salida del loop
-                #print(variables.get("conversation_str"))
+                print(variables.get("conversation_str"))
                 nodo_destino = variables.get("nodo_destino")
                 if variables.get("subsiguiente") == 1:
                     break
@@ -399,7 +394,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
             conversation_str = json.dumps(conversation_history)
             #print(conversation_str)
             
-            print(variables.get("response_text"))
+            #print(variables.get("response_text"))
             #mensaje = msj.get_latest_by_phone(numero_limpio)
             mensaje_a_enviar = variables.get("response_text") or "Hubo un problema interno. Por favor intentá más tarde."
             twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
@@ -416,8 +411,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     timestamp=formatted_now,
                     event_id=event_id
                 )
-                #time.sleep(2)
-                #twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
+                time.sleep(2)
+                twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
             else:
                 tx.update(
                     id=open_tx_id,
@@ -429,7 +424,9 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     event_id=event_id
 
                 )
+            print()
             print(variables.get("response_text"))
+            
             # Cargo la ultima pregunta
             last_assistant_question.add(
                 msg_key=variables.get("nodo_destino"),
@@ -446,4 +443,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("no", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("para venderlas en Argentina", "whatsapp:+5491133585362",  0, "", "","", "","",)

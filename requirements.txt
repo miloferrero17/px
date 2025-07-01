@@ -6,7 +6,7 @@ blinker==1.9.0
 click==8.1.8
 itsdangerous==2.2.0
 serverless-wsgi==3.0.5
-openai==0.28
+openai
 python-dotenv
 twilio
 requests
@@ -21,3 +21,4 @@ reportlab
 xhtml2pdf
 pikepdf
 tiktoken
+boto3
