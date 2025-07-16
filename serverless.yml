@@ -1,4 +1,4 @@
-service: flask-lambda-hello
+service: px
 
 provider:
   name: aws
@@ -23,7 +23,7 @@ provider:
 
 functions:
   app:
-    name: flask-lambda-hello-${opt:stage, 'dev'}-app
+    name: px-${opt:stage, 'dev'}
     handler: wsgi_handler.handler
     timeout: 29
     memorySize: 1024
