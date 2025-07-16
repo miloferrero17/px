@@ -457,4 +457,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("me duele el ombligo", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("me dule el ombligo", "whatsapp:+5491133585362",  0, "", "","", "","",)
