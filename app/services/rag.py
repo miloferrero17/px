@@ -7,8 +7,6 @@ from typing import List
 openai.api_key = os.getenv("OPENAI_API_KEY")
 pinecone = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 
-
-
 def generar_reporte_desde_vector_search(
     prompt: str,
     cantidad_paginas: int,
