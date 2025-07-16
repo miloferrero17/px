@@ -29,11 +29,10 @@ def send_whatsapp_message(body, to, media_url=None):
     """
     if not to.startswith("whatsapp:"):
         print(f"⚠️ Número malformado: '{to}' — debería comenzar con 'whatsapp:'")
-
+    print(twilio_whatsapp_number)
     try:
         message = client.messages.create(
             from_=f'whatsapp:{twilio_whatsapp_number}',
-            #from_= "+5491162077267",
             body=body,
             to=to,
             media_url=media_url if media_url else None
@@ -71,6 +70,11 @@ def download_file(sender, media_url, media_type, folder):
         print(f"❌ Error al descargar archivo desde {media_url}: {e}")
         return None
 
+# ▶️ Probalo con tus datos
+if __name__ == "__main__":
+    send_whatsapp_message("+5491133585362")
+
+'''
 def send_whatsapp_buttons_real(to, body, buttons):
     """
     Envía un mensaje interactivo de WhatsApp con botones reales usando la API HTTP de Twilio.
@@ -107,8 +111,5 @@ def enviar_mensaje_si_no(to_number):
 
     print(f"✅ Mensaje enviado. SID: {message.sid}")
     print(f"📬 Estado del mensaje: {message.status}") 
+'''
 
-
-# ▶️ Probalo con tus datos
-if __name__ == "__main__":
-    enviar_mensaje_si_no("+5491133585362")

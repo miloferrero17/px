@@ -604,15 +604,17 @@ def nodo_200(variables):
     Nodo inicial de bienvenida en el flujo.
     """
     import app.services.brain as brain
+    conversation_str = variables["conversation_str"]
     
     listen_and_speak = (
-        "Podrias escuchar este mensaje: "+ variables["body"] + "Darle la bienvenida, y responder presentandote como PX y pedile que te de mas detalle de su patologia"
+        "Podrias escuchar este mensaje: "+ variables["body"] + "Darle la bienvenida, y responder presentandote como PX y pedile que te de mas detalle de su patologia, haciendo la pregunta de a una?"
     )
     
     messages = [{"role": "assistant", "content": listen_and_speak}]
     response_text = brain.ask_openai(messages)
+    print(response_text)
     
-    
+
     return {
         "nodo_destino": 201,
         "subsiguiente": 1,
@@ -756,8 +758,8 @@ def nodo_203(variables):
     mensaje_def_triage_str = (
         "Vas a hacerle " + max_preguntas_str + " preguntas con el objetivo de diagnosticarlo medicamente.\n"
         "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
-        "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos) y tambien de 2 emojis que hagan la conversacion mas fluida.\n"
-        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas."
+        "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos).\n"
+        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas. Utilizá 1 emoji para hacer más proxima la pregunta."
     )
     #print(mensaje_def_triage)
     

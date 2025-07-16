@@ -51,4 +51,19 @@ custom:
     include:
       - reportlab
     noDeploy:
-      - boto3             # AWS ya provee boto3 en el runtime
+      - boto3
+      - botocore
+      - pip
+      - setuptools
+      - wheel          # AWS ya provee boto3 en el runtime
+
+package:
+  exclude:
+    - tests/**
+    - __pycache__/**
+    - .venv/**
+    - venv/**
+    - .git/**
+    - .DS_Store
+    - node_modules/**
+    - .mypy_cache/**

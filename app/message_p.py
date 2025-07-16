@@ -45,7 +45,6 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
         if( media_type == "application/pdf"):
             twilio.send_whatsapp_message(pdf_text, to, None)    
     
-    
     msj = Messages()
     tx = Transactions()
     ev = Events()
@@ -215,6 +214,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
         
         
         if (entorno == "undefined" or entorno == "dev"):
+            print(entorno)
             twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
             return "Ok"
         else:
@@ -229,6 +229,17 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
     contacto = ctt.get_by_phone(numero_limpio)
     
+
+
+
+
+
+
+
+
+
+
+
     #### 3) Gestión de sesiones   
     if contacto is not None:        
         event_id = ctt.get_event_id_by_phone(numero_limpio)
@@ -244,6 +255,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
         }]
         #print(conversation_history)
         conversation_str = json.dumps(conversation_history)
+
 
         #print(conversation_str)   
         try: #### Creacion y update de sesiones
@@ -334,6 +346,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
             # Bloque de update de sesión
             conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id)
+            #print(conversation_str)
+            #print(conversation_str)
             conversation_history = json.loads(conversation_str) if conversation_str else []
             conversation_history.append({
                 "role": "user",
@@ -443,4 +457,4 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 if __name__ == "__main__":
-    handle_incoming_message("para venderlas en Argentina", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("me duele el ombligo", "whatsapp:+5491133585362",  0, "", "","", "","",)
