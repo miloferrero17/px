@@ -10,9 +10,7 @@
     🧠 Procesamiento de lenguaje natural usando OpenAI GPT-4.
     🧩 Lógica dinámica ejecutada desde base de datos o funciones definidas.
     🧵 Memoria conversacional persistente vía Supabase.
-    📦 Vectorización semántica con embeddings + Pinecone.
     ☁️ Arquitectura serverless con Flask + AWS Lambda.
-    🧭 Modos de conversación: Sherlock, FBI, Fofoqueo.
 
   # ⚙️ Stack tecnológico
     Github

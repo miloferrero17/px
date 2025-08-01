@@ -30,7 +30,7 @@ from app.flows.workflow_logic import ejecutar_nodo
 import app.services.brain as brain
 import app.services.uploader as uploader
 import app.services.decisions as decs
-import app.services.embedding as vector
+#import app.services.embedding as vector
 from app.services.decisions import next_node_fofoca_sin_logica, limpiar_numero, calcular_diferencia_en_minutos,ejecutar_codigo_guardado
 import app.services.brain as brain
 entorno = os.getenv("ENV", "undefined")
@@ -56,8 +56,8 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     formatted_now = now_utc.strftime("%Y-%m-%d %H:%M:%S.%f")
 
     ### 1) Inicializo las variables
-    event_id = 0
-    msg_key = 0
+    event_id = 1
+    msg_key = 200
     nodo_destino = 0
     ultimo_mensaje = ""
     response_text = ""
@@ -83,8 +83,9 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
     contacto = ctt.get_by_phone(numero_limpio)
 
+    '''
     #### 1) Reseteo
-    if body in ("R1", "R2", "R3", "R4", "R5", "R6", "R7"):
+    if body in ("R6"):
         event_id = int(body[1:])    # toma desde el índice 1 hasta el final
         print(event_id)
         msg_key = ev.get_nodo_inicio_by_event_id(event_id)
@@ -120,7 +121,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
         
         try:
             ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
-            print(ultima_tx)
+            #print(ultima_tx)
             
             if ultima_tx is not None:
                 # Cierro la transacción anterior
@@ -197,35 +198,26 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
 
 
-
+    '''
     #### 2) Alta de contacto   
     if contacto is None:        
-        if entorno == "prod":
-            event_id = 6   
-        
+        #event_id = 1   
         ctt.add(
             event_id=event_id, 
             name="Juan",
             phone=numero_limpio
         )
-
+        #msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+        msj.add(
+            msg_key=msg_key,
+            text="Nuevo contacto",
+            phone=numero_limpio,
+            event_id=event_id,
+            question_id=0
+        )
+        
         print("1) Contacto creado")
-        
-        
-        
-        if (entorno == "undefined" or entorno == "dev"):
-            print(entorno)
-            twilio.send_whatsapp_message("¡Bienvenido! Estás a punto de iniciar una prueba con nuestro motor conversacional. Elegí el proyecto con el que querés comenzar. R1) Hunitro; R2) PacienteX - Recepcion; R3) PacienteX - Guardia; R4) PacienteX - WA; R5) Growcast - Sales. Ingresa solo los dos caracteres.", to, None)    
-            return "Ok"
-        else:
-            msg_key = ev.get_nodo_inicio_by_event_id(event_id)
-            msj.add(
-                msg_key=msg_key,
-                text="Cambio a " + body,
-                phone=numero_limpio,
-                event_id=event_id
-            )
-
+    
 
     contacto = ctt.get_by_phone(numero_limpio)
     
@@ -242,11 +234,13 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
     #### 3) Gestión de sesiones   
     if contacto is not None:        
+        '''
         event_id = ctt.get_event_id_by_phone(numero_limpio)
         if event_id == 0:    ### Primera sesion de todas
             twilio.send_whatsapp_message("Por favor contesta un numero para comenzar.", to, None)   
             print("Por favor contesta un numero para comenzar.")
             return "Ok"        
+        '''
 
         contexto_agente = ev.get_description_by_event_id(event_id)
         conversation_history = [{
@@ -317,7 +311,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     data_created=formatted_now
                 )
 
-                msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+                #msg_key = ev.get_nodo_inicio_by_event_id(event_id)
                 msj.add(
                     msg_key=msg_key, 
                     text=body, 
@@ -394,7 +388,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                 variables.update(contexto_actualizado)
                 #print(variables)
                 # Salida del loop
-                print(variables.get("conversation_str"))
+                #print(variables.get("conversation_str"))
                 nodo_destino = variables.get("nodo_destino")
                 if variables.get("subsiguiente") == 1:
                     break
@@ -426,7 +420,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     event_id=event_id
                 )
                 time.sleep(2)
-                twilio.send_whatsapp_message("Fin de la consulta, gracias!", to, None)
+                twilio.send_whatsapp_message("Gracias!", to, None)
             else:
                 tx.update(
                     id=open_tx_id,
@@ -454,7 +448,3 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
         except (TypeError, KeyError) as e:
             print(f"❌ Error accediendo a 'name': {e}")
-
-
-if __name__ == "__main__":
-    handle_incoming_message("me dule el ombligo", "whatsapp:+5491133585362",  0, "", "","", "","",)
