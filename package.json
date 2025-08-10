@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-plugin-provisioned-concurrency": "^0.3.2",
+    "serverless-python-requirements": "^6.1.2",
+    "serverless-wsgi": "^3.1.0"
+  }
+}
