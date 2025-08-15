@@ -2,6 +2,8 @@ import os
 import time
 from dotenv import load_dotenv
 from openai import OpenAI
+import json
+
 # Cargar variables de entorno y crear cliente
 load_dotenv()  # ← ¡Esto es clave!
 api_key = os.getenv("OPENAI_API_KEY")

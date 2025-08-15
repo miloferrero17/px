@@ -17,6 +17,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 import app.services.twilio_service as twilio
 import app.services.wisper as wisper
 import app.services.vision as vision
+import app.services.brain as brain
 import openai
 
 # Módulos propios
@@ -24,6 +25,7 @@ from app.Model.users import Users
 import app.message_p as engine
 from app.Model.transactions import Transactions
 from app.Model.contacts import Contacts
+from app.Model.events import Events
 
 
 routes = flask.Blueprint("routes", __name__)
@@ -232,14 +234,31 @@ def _consulta():
         )
 
     # 3.4 Mostrar Q/A de la transacción
+    contexto_copilot = ""
+    ev = Events()
+    contexto_copilot = ev.get_assistant_by_event_id(1)
+    conversation_history = [{
+            "role": "system",
+            "content":contexto_copilot
+        }]
+    
     convo_str = Transactions().get_conversation_by_id(txid) or "[]"
-    try:
-        messages = json.loads(convo_str)
-    except json.JSONDecodeError:
-        current_app.logger.warning(f"JSON inválido: {convo_str!r}")
-        messages = []
+    conversation_history.append({"role": "assistant", "content": convo_str})
 
+    convo_str = brain.ask_openai(conversation_history)
+    print(convo_str)
+
+    try:
+        parsed = json.loads(convo_str)
+    except json.JSONDecodeError:
+        current_app.logger.warning(f"JSON inválido desde OpenAI, uso texto plano: {convo_str!r}")
+        parsed = convo_str  # puede ser str o algo no-JSON
+
+    messages = _normalize_messages(parsed)
+
+    # Ahora sí, seguro son dicts con role/content
     interacciones = [m for m in messages if m.get("role") in ("assistant", "user")]
+
     return render_template(
         "index.html",
         step="qa",
@@ -247,6 +266,11 @@ def _consulta():
         telefono=tel,
         txid=txid
     )
+
+
+
+
+
 
 # Endpoints GET y POST que llaman a la lógica unificada
 @routes.route("/consulta", methods=["GET"])
@@ -264,107 +288,46 @@ def feedback():
     except Exception:
         raise
 
-'''
 
 
+def _normalize_messages(raw):
+    """
+    Acepta cualquier formato común y devuelve list[{"role":..,"content":..}].
+    Soporta:
+      - str (texto suelto)
+      - list[str]
+      - list[dict] con claves role/content
+      - dict con clave "messages"
+    """
+    # 1) Si viene dict con "messages"
+    if isinstance(raw, dict) and "messages" in raw and isinstance(raw["messages"], list):
+        raw = raw["messages"]
 
-@routes.route("/consulta", methods=["GET"])
-def index():
-    tel  = flask.request.values.get("tel", "").strip()
-    txid = flask.request.values.get("txid")
-
-    if not tel:
-        return flask.render_template("index.html", step="phone")
-
-    contacto = Contacts().get_by_phone(tel)
-    if not contacto:
-        flask.flash(f"El teléfono {tel} no está registrado.", "error")
-        return flask.render_template("index.html", step="phone")
-
-    # paso 2: listado de sesiones/consultas
-    if not txid:
-        sesiones = Transactions().get_by_contact_id(contacto.contact_id)
-        # orden descendente por timestamp raw
-        sesiones.sort(key=lambda s: s.timestamp, reverse=True)
-
-        sesiones_formateadas = []
-        for s in sesiones:
-            raw_ts = s.timestamp
-            # 1) parsear si viene como string
-            if isinstance(raw_ts, str):
-                try:
-                    # si está en ISO (2025-05-02T14:30:00)
-                    dt = datetime.fromisoformat(raw_ts)
-                except ValueError:
-                    # si está en "YYYY-MM-DD HH:MM:SS"
-                    dt = datetime.strptime(raw_ts, "%Y-%m-%d %H:%M:%S")
+    # 2) Si viene list[dict] válido
+    if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+        # Asegura claves mínimas
+        out = []
+        for item in raw:
+            if not isinstance(item, dict):
+                out.append({"role": "assistant", "content": str(item)})
             else:
-                dt = raw_ts  # ya es datetime
+                role = item.get("role") or "assistant"
+                content = item.get("content")
+                # Algunas APIs devuelven content como lista/objeto
+                if isinstance(content, (dict, list)):
+                    content = json.dumps(content, ensure_ascii=False)
+                if content is None:
+                    content = ""
+                out.append({"role": role, "content": str(content)})
+        return out
 
-            # 2) restar 5 horas
-            dt_ajustada = dt - timedelta(hours=3)
+    # 3) Si viene list[str]
+    if isinstance(raw, list) and (not raw or isinstance(raw[0], str)):
+        return [{"role": "assistant", "content": s} for s in raw]
 
-            # 3) formatear
-            sesiones_formateadas.append({
-                "id": s.id,
-                "timestamp": dt_ajustada.strftime("%Y-%m-%d | %H:%M")
-            })
+    # 4) Si viene str
+    if isinstance(raw, str):
+        return [{"role": "assistant", "content": raw}]
 
-        return flask.render_template(
-            "index.html",
-            step="select",
-            telefono=tel,
-            sesiones=sesiones_formateadas
-        )
-
-    # paso 3: Q/A igual que antes…
-    convo_str = Transactions().get_conversation_by_id(txid) or "[]"
-    try:
-        messages = json.loads(convo_str)
-    except json.JSONDecodeError:
-        flask.current_app.logger.warning(f"JSON inválido: {convo_str!r}")
-        messages = []
-
-    interacciones = [m for m in messages if m.get("role") in ("assistant", "user")]
-    return flask.render_template(
-        "index.html",
-        step="qa",
-        interacciones=interacciones,
-        telefono=tel,
-        txid=txid
-    )
-
-@routes.route("/consulta/feedback", methods=["POST"])
-def feedback():
-    tel   = flask.request.form.get("tel", "").strip()
-    txid  = flask.request.form.get("txid")
-    
-    try:
-        rating     = int(flask.request.form.get("rating", 0))
-        comentario = flask.request.form.get("comment", "").strip()
-    except ValueError:
-        flask.flash("Puntuación inválida", "error")
-        return flask.redirect(flask.url_for("routes.index", tel=tel, txid=txid))
-
-    # guardá en BD incluyendo el txid
-    
-    tx = Transactions()
-    try:
-        # Asumimos que txid es el id de la transacción en la tabla
-        tx.update(
-            id=int(txid),
-            puntuacion=rating,
-            comentario=comentario
-        )
-        flask.flash("¡Gracias por tu feedback!", "success")
-    
-    except Exception as e:
-        flask.current_app.logger.error(f"Error guardando feedback: {e}")
-        flask.flash("No se pudo guardar tu feedback", "error")
-
-    # por ahora sólo logueamos:
-    flask.current_app.logger.info(
-        f"Feedback para tx {txid} de {tel}: rating={rating}, comment={comentario}"
-    )
-    return flask.render_template("feedback_thanks.html")
-'''
+    # 5) Fallback
+    return []
