@@ -45,7 +45,7 @@ plugins:
 custom:
   provisionedConcurrency:
     dev: 0
-    prod: 1
+    prod: 0
   wsgi:
     app: app.app
     packRequirements: false

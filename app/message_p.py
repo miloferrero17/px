@@ -57,7 +57,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
 
     ### 1) Inicializo las variables
     event_id = 1
-    msg_key = 200
+    msg_key = 0
     nodo_destino = 0
     ultimo_mensaje = ""
     response_text = ""
@@ -201,13 +201,13 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
     '''
     #### 2) Alta de contacto   
     if contacto is None:        
-        #event_id = 1   
+        event_id = 1   
         ctt.add(
             event_id=event_id, 
             name="Juan",
             phone=numero_limpio
         )
-        #msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+        msg_key = ev.get_nodo_inicio_by_event_id(event_id)
         msj.add(
             msg_key=msg_key,
             text="Nuevo contacto",
@@ -311,7 +311,7 @@ def handle_incoming_message(body, to,  tiene_adjunto, media_type, file_path, tra
                     data_created=formatted_now
                 )
 
-                #msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+                msg_key = ev.get_nodo_inicio_by_event_id(event_id)
                 msj.add(
                     msg_key=msg_key, 
                     text=body, 
