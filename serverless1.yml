@@ -5,6 +5,7 @@ provider:
   runtime: python3.9
   region: us-east-1
   stage: ${opt:stage, 'dev'}
+  versionFunctions: true  # Necesario para usar provisioned concurrency
   environment:
     ENV: ${opt:stage, 'dev'}
     OPENAI_API_KEY: ${env:OPENAI_API_KEY}
@@ -23,10 +24,10 @@ provider:
 
 functions:
   app:
-    name: px-${opt:stage, 'dev'}
     handler: wsgi_handler.handler
     timeout: 29
     memorySize: 1024
+    provisionedConcurrency: ${self:custom.provisionedConcurrency.${opt:stage, 'dev'}}
     events:
       - http:
           path: /
@@ -39,15 +40,19 @@ plugins:
   - serverless-wsgi
   - serverless-python-requirements
   - serverless-dotenv-plugin
+  - serverless-plugin-provisioned-concurrency
 
 custom:
+  provisionedConcurrency:
+    dev: 0
+    prod: 0
   wsgi:
     app: app.app
     packRequirements: false
   pythonRequirements:
     dockerizePip: true
     slim: true
-    prune: true           # quita paquetes no referenciados en tu código
+    prune: true
     include:
       - reportlab
     noDeploy:
@@ -55,7 +60,7 @@ custom:
       - botocore
       - pip
       - setuptools
-      - wheel          # AWS ya provee boto3 en el runtime
+      - wheel
 
 package:
   exclude:
@@ -67,3 +72,4 @@ package:
     - .DS_Store
     - node_modules/**
     - .mypy_cache/**
+  individually: false
