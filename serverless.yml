@@ -3,7 +3,9 @@ service: px
 provider:
   name: aws
   runtime: python3.9
-  region: us-east-1
+  #region: us-east-1
+  region: sa-east-1
+
   stage: ${opt:stage, 'dev'}
   environment:
     ENV: ${opt:stage, 'dev'}
