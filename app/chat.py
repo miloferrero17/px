@@ -1,4 +1,4 @@
 from app.message_p import handle_incoming_message
 
 if __name__ == "__main__":
-    handle_incoming_message("Me duele la panza", "whatsapp:+5491133585362",  0, "", "","", "","",)
+    handle_incoming_message("Sificultad respiratoria", "whatsapp:+5492477661029",  0, "", "","", "","",)
