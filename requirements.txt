@@ -13,7 +13,7 @@ requests
 pydantic
 supabase
 
-pdfplumber
+dfplumber
 python-dateutil>=2.8.2
 
 
