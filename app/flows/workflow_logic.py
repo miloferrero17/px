@@ -27,12 +27,10 @@ def nodo_200(variables):
     Nodo inicial de bienvenida en el flujo; Ley 25.326 
     """
     response_text = (
-        "👋 Hola, soy el co-piloto de PX.\n"
-        "Antes de continuar, necesitamos tu consentimiento para tratar tus datos personales y de salud según la Ley 25.326, la política del hospital y nuestros Terminos y Condiciones.\n"
-        "Si estás de acuerdo, respondé *Acepto*\n"
-        "Más información: pacientex.com.ar/politica-privacidad\n"
-        "Si querés consultar o ejercer tus derechos de acceso, rectificación o supresión de datos, escribí *Privacidad*"
-    )
+    "👋 Hola, soy el co-piloto de PX.\n"
+    "Necesitamos tu consentimiento para tratar tus datos según la Ley 25.326.\nResponde 'Si', si aceptas. \n"
+
+    "Más info: pacientex.com.ar/politica-privacidad")
     #print(response_text)    
 
     return {
