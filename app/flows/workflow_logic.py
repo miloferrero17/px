@@ -103,7 +103,7 @@ def nodo_204(variables):
     if result==0:
         # consentimiento negativ 
         return {
-            "nodo_destino": 200,
+            "nodo_destino": 204,
             "subsiguiente": 1,
             "conversation_str": variables["conversation_str"],
             "response_text": cierre,
@@ -149,7 +149,7 @@ def nodo_206(variables):
     """
     import re, json
 
-    P1 = "Para continuar necesito tu DNI (solo números, sin puntos)."
+    P1 = "Para continuar necesito tu DNI."
     P2 = "El DNI debe tener 7 u 8 números. Probá de nuevo."
     PF = "No pude validar tu DNI. Volvamos a empezar."
 
