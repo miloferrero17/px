@@ -40,15 +40,21 @@ entorno = os.getenv("ENV", "undefined")
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
     numero_limpio = limpiar_numero(to)
 
-    # 1) Manejo de adjuntos (si devuelve True ya respondió y no sigue el flujo)
-    if procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, to):
-        return "Ok"
+    # 1) Manejo de adjuntos 
+    adj_handled, adj_summary, adj_kind = procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcription, to)
 
     # 2) Obtener o crear contacto
     contacto, event_id = obtener_o_crear_contacto(numero_limpio)
 
     # 3) Gestionar sesión y registrar mensaje
     msg_key, conversation_str, conversation_history = gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio)
+
+    if adj_handled and adj_summary:
+        conversation_history.append({
+        "role": "user",
+        "content": f"[Adjunto {adj_kind}] {adj_summary}"
+    })
+        conversation_str = json.dumps(conversation_history)
 
     # 4) Ejecutar workflow
     variables = inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history)
@@ -59,15 +65,42 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     return "Ok"
 
-def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, to):
-    if tiene_adjunto == 1:
-        if media_type.startswith("image"):
-            twilio.send_whatsapp_message(description, to, None)
-            return True
-        if media_type == "application/pdf":
-            twilio.send_whatsapp_message(pdf_text, to, None)
-            return True
-    return False
+import app.services.twilio_service as twilio
+
+def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcription, to):
+    """
+    Envía una respuesta en WhatsApp según el adjunto y devuelve:
+    Devuelve
+    - True si reconocimos y respondimos el adjunto.
+    - summary: texto resumido para guardar en historial/DB.
+    - tipo: "image" | "application/pdf" | "audio" | None
+    """
+    if tiene_adjunto != 1:
+        return False, None, None
+
+    # Imagen
+    if media_type and media_type.startswith("image"):
+        summary = description or "Imagen recibida."
+        twilio.send_whatsapp_message("Estoy analizando tu imagen", to, None)
+        twilio.send_whatsapp_message(summary, to, None)
+        return True, summary, "image"
+
+    # PDF
+    if media_type == "application/pdf":
+        summary = pdf_text or "PDF recibido."
+        twilio.send_whatsapp_message("Estoy analizando tu archivo", to, None)
+        twilio.send_whatsapp_message(summary, to, None)
+        return True, summary, "application/pdf"
+
+    # Audio 
+    if media_type and media_type.startswith("audio"):
+        summary = transcription or "Audio recibido."
+        twilio.send_whatsapp_message("Estoy analizando tu audio", to, None)
+        twilio.send_whatsapp_message(summary, to, None)
+        return True, summary, "audio"
+
+    # Otros tipos: no responde
+    return False, None, None
 
 def obtener_o_crear_contacto(numero_limpio):
     ctt = Contacts()
@@ -88,7 +121,7 @@ def obtener_o_crear_contacto(numero_limpio):
     else:
         #  trae el event_id que ya tiene asignado el contacto
         event_id = ctt.get_event_id_by_phone(numero_limpio) or 1
-        print("Contacto ya exstente")
+        print("Contacto ya existente")
 
     return contacto, event_id
 
@@ -124,7 +157,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     # --- Caso 2: última sesión estaba CERRADA ---
     elif tx.is_last_transaction_closed(numero_limpio) == 1:
-        print("[CERRADA] Nueva sesión ")
+        print("[CERRADA] Abro nueva sesión ")
         tx.add(
             contact_id=contacto.contact_id,
             phone=numero_limpio,
