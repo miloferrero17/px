@@ -109,7 +109,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     # --- Caso 1: primera vez que escribe (no hay TX previa) ---
     if ultima_tx is None:
-        print("[NUEVA] Primer mensaje, creo transacción con CONTEXTO")
+        print("[NUEVA] creo transacción ")
         tx.add(
             contact_id=contacto.contact_id,
             phone=numero_limpio,
@@ -124,7 +124,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     # --- Caso 2: última sesión estaba CERRADA ---
     elif tx.is_last_transaction_closed(numero_limpio) == 1:
-        print("[CERRADA] Nueva sesión con CONTEXTO y nodo inicio")
+        print("[CERRADA] Nueva sesión ")
         tx.add(
             contact_id=contacto.contact_id,
             phone=numero_limpio,
@@ -139,7 +139,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     # --- Caso 3: la sesión VENCIDA por tiempo ---
     elif calcular_diferencia_en_minutos(tx, numero_limpio) > ev.get_time_by_event_id(event_id):
-        print("[VENCIDA] Cierro anterior y creo nueva con CONTEXTO; reinicio en nodo inicio")
+        print("[VENCIDA] Cierro anterior y creo nueva ")
         tx.update(
             id=ultima_tx["id"],
             contact_id=contacto.contact_id,
@@ -162,7 +162,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     # --- Caso 4: sesión VIGENTE ---
     else:
-        print("[VIGENTE] Uso la sesión abierta ")
+        print("[VIGENTE] sesión abierta ")
         ultimo_mensaje = msj.get_latest_by_phone(numero_limpio)
         msg_key = ultimo_mensaje.msg_key if ultimo_mensaje else nodo_inicio
         msj.add(msg_key=msg_key, text=body, phone=numero_limpio, event_id=event_id)
@@ -198,6 +198,7 @@ def inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conv
 
         # Estado del flujo
         "response_text": "",
+
         "result": "",
         "subsiguiente": 0,
         "url": "",
@@ -209,6 +210,7 @@ def inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conv
         "aux_question_fofoca": [{"role": "system", "content": ""}],
         "max_preguntas": 0
     }
+
 
 def ejecutar_workflow(variables):
     while True:
@@ -228,7 +230,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     mensaje_a_enviar = variables.get("response_text") or "Hubo un problema interno. Intenta más tarde."
     twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
 
-    # 🔑 AÑADIR respuesta del asistente al historial ANTES de persistir
+    # AÑADIR respuesta del asistente al historial ANTES de persistir
     ch = variables.get("conversation_history", [])
     ch.append({"role": "assistant", "content": variables.get("response_text", "")})
     variables["conversation_history"] = ch
@@ -260,6 +262,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         question_id=variables.get("question_id", 0),
         event_id=event_id
     )
+
 
 
 

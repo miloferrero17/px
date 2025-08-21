@@ -4,18 +4,11 @@ def ejecutar_nodo(nodo_id, variables):
         201: nodo_201,
         202: nodo_202,
         203: nodo_203,
+        204: nodo_204,
         205: nodo_205,
+        206: nodo_206,
     }
     return NODOS[nodo_id](variables)
-
-
-
-
-
-
-
-
-
 
 
 #############################################################
@@ -34,7 +27,7 @@ def nodo_200(variables):
     #print(response_text)    
 
     return {
-        "nodo_destino": 205,
+        "nodo_destino": 204,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
@@ -42,6 +35,84 @@ def nodo_200(variables):
         "question_id": None,
         "result": "Abierta"
     }
+
+def nodo_204(variables):
+    """
+    - '1' => consentimiento afirmativo -> ir a 205
+    - '0' => no/ambiguo => enviar mensajes por Twilio y cerrar
+    """
+    import json
+    import app.services.brain as brain
+    import app.services.twilio_service as twilio
+
+    # Contexto
+    conversation_str = variables.get("conversation_str", "").strip().lower()
+    tx = variables.get("tx")
+    ctt = variables.get("ctt")
+    ev = variables.get("ev")
+    numero_limpio = variables.get("numero_limpio")
+    
+
+    last_raw = (variables.get("body") or "").strip()
+
+    import re, unicodedata
+    def _norm(s: str) -> str:
+        # quita tildes, pasa a minúsculas y limpia puntuación
+        s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+        s = s.lower()
+        s = re.sub(r"[^\w\s]+", " ", s)   # elimina signos/emoji
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    text = _norm(last_raw)
+
+    # positivos: si, acepto, ok, 1  (palabra completa)
+    pos = (
+        bool(re.search(r"\bsi\b", text)) or
+        bool(re.search(r"\bacepto\b", text)) or
+        bool(re.search(r"\bok\b", text)) or
+        text == "1"
+    )
+
+    # negativos: no, nunca, 0  (palabra completa)
+    neg = (
+        bool(re.search(r"\bno\b", text)) or
+        bool(re.search(r"\bnunca\b", text)) or
+        text == "0"
+    )
+
+    # la negación domina
+    result = 1 if (pos and not neg) else 0
+
+
+    if result==1:
+        # consentimiento afirmativo -> avanzar a 205 sin texto adicional
+        return {
+            "nodo_destino": 206,
+            "subsiguiente": 0,
+            "conversation_str": variables["conversation_str"],
+            "response_text": "",
+            "group_id": None,
+            "question_id": None,
+            "result": "Abierta"
+        }
+    cierre = (
+        "Entiendo. No podemos continuar sin tu consentimiento.\n"
+        
+    )
+    if result==0:
+        # consentimiento negativ 
+        return {
+            "nodo_destino": 200,
+            "subsiguiente": 1,
+            "conversation_str": variables["conversation_str"],
+            "response_text": cierre,
+            "group_id": None,
+            "question_id": None,
+            "result": "Cerrada"
+        }
+
+
 
 
 def nodo_205(variables):
@@ -69,6 +140,81 @@ def nodo_205(variables):
         "question_id": None,
         "result": "Abierta"
     }
+
+def nodo_206(variables):
+    """
+    Pide DNI (7–8 dígitos). Normaliza, valida y controla reintentos.
+    - Válido  -> salta a 205 
+    - Inválido-> hasta 2 reintentos; luego informa y vuelve a 200
+    """
+    import re, json
+
+    P1 = "Para continuar necesito tu DNI (solo números, sin puntos)."
+    P2 = "El DNI debe tener 7 u 8 números. Probá de nuevo."
+    PF = "No pude validar tu DNI. Volvamos a empezar."
+
+    # 1) Validar
+    body = (variables.get("body") or "").strip()
+    dni = re.sub(r"\D+", "", body)  # normaliza: deja solo dígitos
+
+    if dni and len(dni) in (7, 8):
+        variables["dni"] = dni  # pra  guardarlo para nodos siguientes
+        return {
+            "nodo_destino": 205,
+            "subsiguiente": 0,
+            "conversation_str": variables.get("conversation_str", ""),
+            "response_text": "",
+            "group_id": None,
+            "question_id": None,
+            "result": "Abierta",
+        }
+
+    # 2) Cargar historial y contar cuántas veces ya pedimos/reintentamos
+    try:
+        history = json.loads(variables.get("conversation_str") or "[]")
+        if not isinstance(history, list):
+            history = []
+    except Exception:
+        history = []
+
+    attempts = 0
+    for m in history:
+        if (
+            isinstance(m, dict)
+            and m.get("role") == "assistant"
+            and m.get("content") in (P1, P2)
+        ):
+            attempts += 1
+
+
+    # 3) Elegir el próximo mensaje según intentos
+    if attempts == 0:
+        prompt = P1
+        next_node = 206
+        result = "Abierta"
+    elif attempts == 1:
+        prompt = P2
+        next_node = 206
+        result = "Abierta"
+    else:
+        prompt = PF
+        next_node = 200
+        result = "Cerrada"
+
+    # 4) Guardar el prompt en el historial y responder
+    history.append({"role": "assistant", "content": prompt})
+    new_cs = json.dumps(history)
+
+    return {
+        "nodo_destino": next_node,
+        "subsiguiente": 1,
+        "conversation_str": new_cs,
+        "response_text": prompt,
+        "group_id": None,
+        "question_id": None,
+        "result": result,
+    }
+
 
 
 
@@ -112,6 +258,8 @@ def nodo_201(variables):
         "question_id": None,
         "result": "Abierta"
     }
+
+
 
 
 def nodo_202(variables):
