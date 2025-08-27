@@ -1,13 +1,13 @@
 def ejecutar_nodo(nodo_id, variables):
     NODOS = {
-        #200: nodo_200,
         201: nodo_201,
         202: nodo_202,
         203: nodo_203,
         204: nodo_204,
         205: nodo_205,
         206: nodo_206,
-    }
+        207: nodo_207
+   }
     return NODOS[nodo_id](variables)
 
 
@@ -15,31 +15,9 @@ def ejecutar_nodo(nodo_id, variables):
 # PX - WA B2B
 #############################################################
 
-'''def nodo_200(variables):
-    """
-    Nodo inicial de bienvenida en el flujo; Ley 25.326 
-    """
-    response_text = (
-    "👋 Hola, soy el co-piloto de PX.\n"
-    "Necesitamos tu consentimiento para tratar tus datos según la Ley 25.326.\nResponde 'Si', si aceptas. \n"
-
-    "Más info: pacientex.com.ar/politica-privacidad")
-    #print(response_text)    
-
-    return {
-        "nodo_destino": 204,
-        "subsiguiente": 1,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": response_text,
-        "group_id": None,
-        "question_id": None,
-        "result": "Abierta"
-    }'''
-
 def nodo_204(variables):
     """
-    - '1' => consentimiento afirmativo -> ir a 205
-    - '0' => no/ambiguo => enviar mensajes por Twilio y cerrar
+    Ley de datos
     """
     import json
     import app.services.brain as brain
@@ -112,37 +90,13 @@ def nodo_204(variables):
             "result": "Cerrada"
         }
 
-
-
-
-def nodo_205(variables):
-    """
-    Nodo inicial de bienvenida en el flujo.
-    """
-    import app.services.brain as brain
-    conversation_str = variables["conversation_str"]
-    
-    listen_and_speak = (
-        "Podrias leer este historial y formular la pregunta en base al mismo: "+ conversation_str + "Pedile que te de mas detalle de su patologia. Por favor, no escribas nada antes ni despues de la respuesta e intentar ser breve"
-    )
-    
-    messages = [{"role": "assistant", "content": listen_and_speak}]
-    response_text = brain.ask_openai(messages)
-    #print(response_text)
-    
-
-    return {
-        "nodo_destino": 201,
-        "subsiguiente": 1,
-        "conversation_str": variables.get("conversation_str", ""),
-        "response_text": response_text,
-        "group_id": None,
-        "question_id": None,
-        "result": "Abierta"
-    }
-
 def nodo_206(variables):
     """
+    Nodo DNI
+    
+
+
+
     Pide DNI (7–8 dígitos). Normaliza, valida y controla reintentos.
     - Válido  -> salta a 205 
     - Inválido-> hasta 2 reintentos; luego informa y vuelve a 200
@@ -160,7 +114,7 @@ def nodo_206(variables):
     if dni and len(dni) in (7, 8):
         variables["dni"] = dni  # pra  guardarlo para nodos siguientes
         return {
-            "nodo_destino": 205,
+            "nodo_destino": 207,
             "subsiguiente": 0,
             "conversation_str": variables.get("conversation_str", ""),
             "response_text": "",
@@ -186,7 +140,6 @@ def nodo_206(variables):
         ):
             attempts += 1
 
-
     # 3) Elegir el próximo mensaje según intentos
     if attempts == 0:
         prompt = P1
@@ -197,10 +150,17 @@ def nodo_206(variables):
         next_node = 206
         result = "Abierta"
     else:
-        prompt = PF
-        next_node = 200
         result = "Cerrada"
-
+        return {
+            "nodo_destino": 204,
+            "subsiguiente": 1,
+            "conversation_str": new_cs,
+            "response_text": PF,
+            "group_id": None,
+            "question_id": None,
+            "result": result,
+        }
+    
     # 4) Guardar el prompt en el historial y responder
     history.append({"role": "assistant", "content": prompt})
     new_cs = json.dumps(history)
@@ -216,6 +176,47 @@ def nodo_206(variables):
     }
 
 
+def nodo_207(variables):
+    """
+    Nodo de credencial de OOSS/Prepaga.
+    """
+    response_text = (
+        "¿Podrías pasarnos una captura de pantalla de tu credencial de la Obra Social?" )
+    
+    
+    return {
+        "nodo_destino": 205,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+    }   
+
+
+
+def nodo_205(variables):
+    """
+    Nodo inicial de bienvenida en el flujo.
+    """
+    #import app.services.brain as brain
+    body = variables.get("body", "").strip().lower()
+    print(body)
+
+    response_text = (
+        "¿Que te trae a la guardia?" )
+    
+    
+    return {
+        "nodo_destino": 207,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta"
+    }
 
 
 def nodo_201(variables):

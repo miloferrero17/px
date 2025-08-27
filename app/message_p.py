@@ -54,6 +54,7 @@ def log_latency(func):
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
+    body = body + transcription + description + pdf_text
     import json
     from datetime import datetime, timezone
 
@@ -62,8 +63,8 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     WELCOME_MSG = (
         "👋 Hola, soy el co-piloto de PX.\n"
         "Necesitamos tu consentimiento para tratar tus datos según la Ley 25.326.\n"
-        "Respondé 'Sí' si aceptás.\n"
-        "Más info: pacientex.com.ar/politica-privacidad"
+        "Respondé 'Acepto' si aceptás.\n"
+        "Más info: pacientex.com.ar"
     )
 
     tx = Transactions()
@@ -194,14 +195,15 @@ def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcri
     if media_type and media_type.startswith("image"):
         summary = description or "Imagen recibida."
         #twilio.send_whatsapp_message("Estoy analizando tu imagen", to, None)
-        twilio.send_whatsapp_message(summary, to, None)
+        #twilio.send_whatsapp_message(summary, to, None)
         return True, summary, "image"
 
     # PDF
     if media_type == "application/pdf":
         summary = pdf_text or "PDF recibido."
+        #body = body + summary
         #twilio.send_whatsapp_message("Estoy analizando tu archivo", to, None)
-        twilio.send_whatsapp_message(summary, to, None)
+        #twilio.send_whatsapp_message(summary, to, None)
         return True, summary, "application/pdf"
 
     # Audio 
