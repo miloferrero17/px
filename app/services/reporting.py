@@ -24,6 +24,10 @@ SCHEMA_ORDER: List[Tuple[str, str]] = [
     ("signos_vitales", "Signos vitales"),
     ("triage", "Clasificación de triage"),
 
+    ("__section_examenfisico", "Examen Físico"),
+
+    ("examen_fisico", "Examen Físico"),
+
 
     ("__section_antecedentes", "Antecedentes del paciente"), #nuevo
 
@@ -35,7 +39,9 @@ SCHEMA_ORDER: List[Tuple[str, str]] = [
     ("medicacion_habitual", "Medicación habitual"),
     ("embarazo", "Embarazo"),
     ("vacunas", "Vacunas"),
-    
+
+
+  
 ]
 
 # Defaults para cualquier campo ausente o vacío

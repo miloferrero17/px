@@ -52,6 +52,112 @@
 
     {% elif step == "qa" %}
       <h1 class="section-title">Consulta {{ txid }} de {{ telefono }}</h1>
+
+      {# === Cards del reporte (debajo del H1) === #}
+      {% if cards %}
+        <h2 class="section-title">Datos personales</h2>
+
+        <form method="get" action="{{ url_for('routes.index', tel=telefono, txid=txid) }}" class="form">
+          <input type="hidden" name="tel" value="{{ telefono }}">
+          <input type="hidden" name="txid" value="{{ txid }}">
+          {# Si usás CSRF, descomentar: {{ csrf_token() }} #}
+
+          <ul class="cards">
+            {% for c in cards %}
+              {% if c.type == "section" %}
+                <!-- Título de sección -->
+                <li class="cards-section">
+                  <h2 class="section-title">{{ c.label }}</h2>
+                </li>
+
+              {% else %}
+                <li class="card">
+                  {# === Selects (no alargables) === #}
+                  {% if c.key == "genero" %}
+                    <div class="field-inline">
+                      <label><strong>{{ c.label }}</strong></label>
+                      <select name="{{ c.key }}" class="input">
+                        {% for opt in ["Mujer","Hombre","Otro"] %}
+                          <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+
+                  {% elif c.key == "embarazo" %}
+                    <label><strong>{{ c.label }}</strong></label>
+                    {% set val = c.value|default('')|trim %}
+                    <select name="{{ c.key }}" class="input">
+                      <option value="Sí" {{ "selected" if val == "Sí" else "" }}>Sí</option>
+                      <option value="No" {{ "selected" if val in ["", "No", "No refiere", "No disponible"] else "" }}>No</option>
+                      <option value="Desconoce" {{ "selected" if val == "Desconoce" else "" }}>Desconoce</option>
+                    </select>
+
+                  {# === Numéricos (no alargables) === #}
+                  {% elif c.key == "edad" %}
+                    <div class="field-block">
+                      <label class="field-label"><strong>{{ c.label }}</strong></label>
+                      <input
+                        type="number"
+                        name="{{ c.key }}"
+                        min="0"
+                        max="120"
+                        step="1"
+                        value="{{ c.value }}"
+                        class="input"
+                        placeholder="años"
+                      />
+                    </div>
+
+                  {% elif c.key == "dolor" %}
+                    <div class="field-block">
+                      <label class="field-label"><strong>{{ c.label }}</strong></label>
+                      <input
+                        type="number"
+                        name="{{ c.key }}"
+                        min="1"
+                        max="10"
+                        step="1"
+                        value="{{ c.value | replace('/10','') }}"
+                        class="input"
+                        placeholder="1–10"
+                      />
+                    </div>
+
+                  {# === Resto: textarea alargable (vertical) === #}
+                  {% else %}
+                    <div class="field-block">
+                      <label class="field-label"><strong>{{ c.label }}</strong></label>
+                      <textarea
+                        name="{{ c.key }}"
+                        class="input textarea-grow"
+                        rows="2"
+                        placeholder="Escriba aquí…"
+                      >{{ c.value }}</textarea>
+                    </div>
+                  {% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+
+
+          <button
+            type="submit"
+            formmethod="get"
+            formaction="{{ url_for('routes.index', tel=telefono, txid=txid) }}"
+          >Seguir    </button>
+
+        </form>
+      {% endif %}
+
+      <p><a href="{{ url_for('routes.index', tel=telefono) }}">&larr; Volver a consultas</a></p>
+    {% endif %}
+
+
+  </div>
+</body>
+</html>
+
 <!--
       {# === Cards del reporte (debajo del H1) === #}
       {% if cards %}
@@ -72,56 +178,6 @@
         </ul>
       {% endif %}
       -->
-      {# === Cards del reporte (debajo del H1) === #}
-      {% if cards %}
-        <h2 class="section-title">Datos personales</h2>
-        <ul class="cards">
-          {% for c in cards %}
-            {% if c.type == "section" %}
-              <li class="cards-section">
-                <h2 class="section-title">{{ c.label }}</h2>
-              </li>
-            {% else %}
-              <li class="card">
-                <label><strong>{{ c.label }}</strong></label>
-
-                {# Género: lista scrolleable #}
-                {% if c.key == "genero" %}
-                  <select name="{{ c.key }}" size="3" class="input" style="max-height: 96px; overflow:auto;">
-                    {% for opt in ["Mujer","Hombre","Otro"] %}
-                      <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
-                    {% endfor %}
-                  </select>
-
-                {# Embarazo: lista scrolleable #}
-                {% elif c.key == "embarazo" %}
-                  <select name="{{ c.key }}" size="3" class="input" style="max-height: 96px; overflow:auto;">
-                    {% for opt in ["Sí","No","Desconoce"] %}
-                      <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
-                    {% endfor %}
-                  </select>
-
-                {# Dolor: 1–10 #}
-                {% elif c.key == "dolor" %}
-                  <input type="number" name="{{ c.key }}" min="1" max="10" step="1"
-                        value="{{ c.value | replace('/10','') }}" class="input" placeholder="1–10"/>
-
-                {# Campos largos: textarea #}
-                {% elif c.key in ["motivo_consulta","sintomas_asociados","medicacion_recibida",
-                                  "factor_desencadenante","medicacion_habitual","signos_vitales"] %}
-                  <textarea name="{{ c.key }}" rows="2" class="input">{{ c.value }}</textarea>
-
-                {# Resto: input de texto #}
-                {% else %}
-                  <input type="text" name="{{ c.key }}" value="{{ c.value }}" class="input"/>
-                {% endif %}
-              </li>
-            {% endif %}
-          {% endfor %}
-        </ul>
-      {% endif %}
-
-
 <!--
       {# === Feedback médico === #}
       <h2 class="section-title">Feedback del médico</h2>
@@ -141,15 +197,7 @@
 
         <button type="submit">Enviar Feedback</button>
       </form>
-
-      <p><a href="{{ url_for('routes.index', tel=telefono) }}">&larr; Volver a consultas</a></p>
-    {% endif %}
--->
-  </div>
-</body>
-</html>
-
-
+      -->
 
 <!--
 <!DOCTYPE html>

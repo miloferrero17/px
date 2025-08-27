@@ -1,13 +1,13 @@
-:root {
-  --color-primary: #005AAC;
-  --color-accent:  #00C2F3;
-  --color-bg:      #F3F8FC;
-  --color-white:   #FFFFFF;
-  --color-text:    #1B1E23;
-  --radius:        12px;
-  --shadow:        0 4px 12px rgba(0,0,0,0.06);
-  --font:          'Segoe UI', Roboto, sans-serif;
-}
+:root { 
+  --color-primary: #005AAC; 
+  --color-accent: #00C2F3; 
+  --color-bg: #F3F8FC; 
+  --color-white: #FFFFFF; 
+  --color-text: #1B1E23; 
+  --radius: 12px; 
+  --shadow: 0 4px 12px rgba(0,0,0,0.06); 
+  --font: 'Segoe UI', Roboto, sans-serif; }
+
 
 * {
   box-sizing: border-box;
@@ -117,6 +117,7 @@ form button:hover {
 }
 
 /* Listado de interacciones */
+/* Listado de interacciones */
 .cards {
   list-style: none;
   padding: 0;
@@ -129,34 +130,59 @@ form button:hover {
   margin: 16px 0 8px;
   padding: 0;
 }
-.cards .input{ width:100%; max-width:680px; padding:8px 10px; border:1px solid #d9e0e8; border-radius:10px; font:inherit; }
 
+/* === Ancho UNIFICADO para TODOS los controles === */
+.cards .input{
+  box-sizing: border-box;
+  width: 680px;      /* ← fija el ancho */
+  max-width: 680px;
+  min-width: 680px;
+  padding: 8px 10px;
+  border: 1px solid #d9e0e8;
+  border-radius: 10px;
+  font: inherit;
+}
+.cards select.input{
+  appearance: auto;
+  -webkit-appearance: auto;
+  padding-right: 28px; /* espacio para la flecha del select */
+}
+.cards textarea.input{
+  resize: vertical;   /* solo crece hacia abajo */
+  overflow: auto;
+}
 
+/* Contenedor label + control en columna (para campos largos) */
+.field-block{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Ítem card visual */
 .cards li.card {
   background-color: var(--color-white);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 16px;
   transition: transform 0.2s;
+  overflow: visible; /* no recortar desplegables */
 }
+.cards li.card:hover { transform: translateY(-4px); }
 
-.cards li.assistant {
-  border-left: 4px solid var(--color-primary);
-}
-
-.cards li.user {
-  border-left: 4px solid #ccc;
-}
-
-.cards li.card:hover {
-  transform: translateY(-4px);
-}
+/* Bordes laterales para QA (si usás estos estados) */
+.cards li.assistant { border-left: 4px solid var(--color-primary); }
+.cards li.user { border-left: 4px solid #ccc; }
 
 @media (max-width: 600px) {
-  .cards {
-    grid-template-columns: 1fr;
+  .cards { grid-template-columns: 1fr; }
+  .cards .input{
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 }
+
 
 /* Header principal */
 .app-header {
