@@ -37,6 +37,7 @@ entorno = os.getenv("ENV", "undefined")
 
 import time
 import functools
+import app.services.twilio_service as twilio
 
 
 def log_latency(func):
@@ -68,12 +69,11 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     tx = Transactions()
 
     # 0) Bienvenida express: si aplica, enviar y sembrar TX NUEVA + ancla (nodo 204), luego RETURN
-    if message1(tx, numero_limpio, ttl_min=5):
+    if message1(tx, numero_limpio):
         twilio.send_whatsapp_message(WELCOME_MSG, to, None)
 
         # contacto + evento
         contacto, event_id = obtener_o_crear_contacto(numero_limpio)
-
         # contexto base de la sesión
         ev = Events()
         contexto_agente = ev.get_description_by_event_id(event_id) or ""
@@ -128,21 +128,26 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
         # Importante: no seguir con adjuntos ni workflow en este turno
         return "Ok"
-    # 1) Manejo de adjuntos 
-    adj_handled, adj_summary, adj_kind = procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcription, to)
-
-    # 2) Obtener o crear contacto
+    # 1) Obtener o crear contacto
     contacto, event_id = obtener_o_crear_contacto(numero_limpio)
 
-    # 3) Gestionar sesión y registrar mensaje
-    msg_key, conversation_str, conversation_history = gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio)
+    # 2) Gestionar sesión y registrar mensaje
+    msg_key, conversation_str, conversation_history = gestionar_sesion_y_mensaje(
+        contacto, event_id, body, numero_limpio
+    )
 
-    if adj_handled and adj_summary:
-        conversation_history.append({
-        "role": "user",
-        "content": f"[Adjunto {adj_kind}] {adj_summary}"
-    })
-        conversation_str = json.dumps(conversation_history)
+    # 3) Manejo de adjuntos SOLO si NO estamos en consentimiento (204) ni DNI (206)
+    adj_handled = False
+    if msg_key not in (204, 206):
+        adj_handled, adj_summary, adj_kind = procesar_adjuntos(
+            tiene_adjunto, media_type, description, pdf_text, transcription, to
+        )
+        if adj_handled and adj_summary:
+            conversation_history.append({
+                "role": "user",
+                "content": f"[Adjunto {adj_kind}] {adj_summary}"
+            })
+            conversation_str = json.dumps(conversation_history)
 
     # 4) Ejecutar workflow
     variables = inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history)
@@ -153,28 +158,23 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     return "Ok"
 
-import app.services.twilio_service as twilio
+
 @log_latency
-@log_latency
-def message1(tx, numero_limpio: str, ttl_min: int = 5) -> bool:
+
+
+def message1(tx, numero_limpio: str) -> bool:
     """
-    Devuelve True si corresponde enviar el mensaje de bienvenida:
-      - no existe transacción previa
-      - la última transacción está cerrada
-      - la última transacción venció por > ttl_min minutos
-    (Si algo falla, devuelve False para no spammear.)
+    True si corresponde enviar la bienvenida:
+      - no existe transacción previa, o
+      - la última transacción está cerrada.
     """
     try:
         ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
         if ultima_tx is None:
             return True
-
-        if tx.is_last_transaction_closed(numero_limpio) == 1:
-            return True
-
-        diff = calcular_diferencia_en_minutos(tx, numero_limpio)
-        return bool(diff is not None and diff > ttl_min)
+        return tx.is_last_transaction_closed(numero_limpio) == 1
     except Exception:
+        # si algo falla, no spammear
         return False
 
 

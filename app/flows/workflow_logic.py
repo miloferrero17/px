@@ -1,6 +1,6 @@
 def ejecutar_nodo(nodo_id, variables):
     NODOS = {
-        200: nodo_200,
+        #200: nodo_200,
         201: nodo_201,
         202: nodo_202,
         203: nodo_203,
@@ -15,7 +15,7 @@ def ejecutar_nodo(nodo_id, variables):
 # PX - WA B2B
 #############################################################
 
-def nodo_200(variables):
+'''def nodo_200(variables):
     """
     Nodo inicial de bienvenida en el flujo; Ley 25.326 
     """
@@ -34,7 +34,7 @@ def nodo_200(variables):
         "group_id": None,
         "question_id": None,
         "result": "Abierta"
-    }
+    }'''
 
 def nodo_204(variables):
     """
@@ -352,7 +352,9 @@ def nodo_203(variables):
         "Vas a hacerle " + max_preguntas_str + " preguntas con el objetivo de diagnosticarlo medicamente.\n"
         "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
         "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos).\n"
-        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas. Utilizá 1 emoji para hacer más proxima la pregunta."
+        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas. Agregá exactamente 1 emoji neutral de objeto al FINAL de la oración  "
+    "No uses emojis de caras, manos, corazones, fiesta, fuego ni “100”, ni ningún emoji que exprese emociones u opiniones (p. ej.: 🙂, 😟, 👍, 👎, ❤️, 🎉, 🔥, 💯). "
+    
     )
     #print(mensaje_def_triage)
     

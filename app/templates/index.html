@@ -9,11 +9,11 @@
   <!-- Header con logo y título -->
   <header class="app-header">
     <img
-      src="https://blog.elegimejor.net/wp-content/uploads/2023/11/sanatorio-mater-dei.jpeg"
+      src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
       alt="Logo Sanatorio Mater Dei"
       class="app-logo"
     >
-    <h1 class="app-title">Backoffice medico</h1>
+    <h1 class="app-title">Backoffice médico</h1>
   </header>
  
   <!-- Flash messages -->
@@ -49,42 +49,102 @@
       </ul>
       <p><a href="{{ url_for('routes.index') }}">&larr; Cambiar teléfono</a></p>
 
+
     {% elif step == "qa" %}
       <h1 class="section-title">Consulta {{ txid }} de {{ telefono }}</h1>
+<!--
+      {# === Cards del reporte (debajo del H1) === #}
+      {% if cards %}
+        <h2 class="section-title">Datos personales</h2>
+        <ul class="cards">
+          {% for c in cards %}
+            {% if c.type == "section" %}
+              <li class="cards-section">
+                <h2 class="section-title">{{ c.label }}</h2>
+              </li>
+            {% else %}
+              <li class="card">
+                <p><strong>{{ c.label }}</strong></p>
+                <p>{{ c.value }}</p>
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+      -->
+      {# === Cards del reporte (debajo del H1) === #}
+      {% if cards %}
+        <h2 class="section-title">Datos personales</h2>
+        <ul class="cards">
+          {% for c in cards %}
+            {% if c.type == "section" %}
+              <li class="cards-section">
+                <h2 class="section-title">{{ c.label }}</h2>
+              </li>
+            {% else %}
+              <li class="card">
+                <label><strong>{{ c.label }}</strong></label>
 
-      <ul class="cards">
-        {% for m in interacciones %}
-          <li class="card {{ m.role }}">
-            <p>
-              <strong>
-                {% if m.role == "assistant" %}Asistente{% else %}Paciente{% endif %}:
-              </strong>
-            </p>
-            <p>{{ m.content }}</p>
-          </li>
-        {% endfor %}
-      </ul>
+                {# Género: lista scrolleable #}
+                {% if c.key == "genero" %}
+                  <select name="{{ c.key }}" size="3" class="input" style="max-height: 96px; overflow:auto;">
+                    {% for opt in ["Mujer","Hombre","Otro"] %}
+                      <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
+                    {% endfor %}
+                  </select>
 
+                {# Embarazo: lista scrolleable #}
+                {% elif c.key == "embarazo" %}
+                  <select name="{{ c.key }}" size="3" class="input" style="max-height: 96px; overflow:auto;">
+                    {% for opt in ["Sí","No","Desconoce"] %}
+                      <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
+                    {% endfor %}
+                  </select>
+
+                {# Dolor: 1–10 #}
+                {% elif c.key == "dolor" %}
+                  <input type="number" name="{{ c.key }}" min="1" max="10" step="1"
+                        value="{{ c.value | replace('/10','') }}" class="input" placeholder="1–10"/>
+
+                {# Campos largos: textarea #}
+                {% elif c.key in ["motivo_consulta","sintomas_asociados","medicacion_recibida",
+                                  "factor_desencadenante","medicacion_habitual","signos_vitales"] %}
+                  <textarea name="{{ c.key }}" rows="2" class="input">{{ c.value }}</textarea>
+
+                {# Resto: input de texto #}
+                {% else %}
+                  <input type="text" name="{{ c.key }}" value="{{ c.value }}" class="input"/>
+                {% endif %}
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+
+<!--
+      {# === Feedback médico === #}
       <h2 class="section-title">Feedback del médico</h2>
       <form method="post" action="{{ url_for('routes.feedback') }}">
         <input type="hidden" name="tel" value="{{ telefono }}">
         <input type="hidden" name="txid" value="{{ txid }}">
 
         <label for="rating">Puntuación (1–5):</label>
-        <select id="rating" name="rating">
+        <select id="rating" name="rating" required>
           {% for i in range(1,6) %}
             <option value="{{ i }}">{{ i }}</option>
           {% endfor %}
         </select>
 
         <label for="comment">Comentario:</label>
-        <textarea id="comment" name="comment" rows="4" placeholder="Agrega tus observaciones aquí..."></textarea>
+        <textarea id="comment" name="comment" rows="4" placeholder="Agrega tus observaciones aquí..." required></textarea>
 
         <button type="submit">Enviar Feedback</button>
       </form>
 
       <p><a href="{{ url_for('routes.index', tel=telefono) }}">&larr; Volver a consultas</a></p>
     {% endif %}
+-->
   </div>
 </body>
 </html>
