@@ -57,10 +57,19 @@
       {% if cards %}
         <h2 class="section-title">Datos personales</h2>
 
-        <form method="get" action="{{ url_for('routes.index', tel=telefono, txid=txid) }}" class="form">
+        <form method="post" action="{{ url_for('routes.revisar') }}" class="form">
+          {{ csrf_token() if csrf_token is defined }}
           <input type="hidden" name="tel" value="{{ telefono }}">
           <input type="hidden" name="txid" value="{{ txid }}">
-          {# Si usás CSRF, descomentar: {{ csrf_token() }} #}
+
+
+          
+          <input type="hidden" name="tx_id" value="{{ txid }}">
+          <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at }}">
+          <input type="hidden" name="clinician_name" value="{{ clinician_name or 'Virginia Fux' }}">
+          <input type="hidden" name="clinician_license" value="{{ clinician_license or 'MP123' }}">
+
+
 
           <ul class="cards">
             {% for c in cards %}
@@ -87,26 +96,23 @@
                     <label><strong>{{ c.label }}</strong></label>
                     {% set val = c.value|default('')|trim %}
                     <select name="{{ c.key }}" class="input">
-                      <option value="Sí" {{ "selected" if val == "Sí" else "" }}>Sí</option>
+                      <option value="Si" {{ "selected" if val == "Sí" else "" }}>Si</option>
                       <option value="No" {{ "selected" if val in ["", "No", "No refiere", "No disponible"] else "" }}>No</option>
                       <option value="Desconoce" {{ "selected" if val == "Desconoce" else "" }}>Desconoce</option>
                     </select>
 
                   {# === Numéricos (no alargables) === #}
-                  {% elif c.key == "edad" %}
-                    <div class="field-block">
-                      <label class="field-label"><strong>{{ c.label }}</strong></label>
+                  {% elif c.key == "fecha_nacimiento" %}
+                    <div class="field-inline">
+                      <label><strong>{{ c.label }}</strong></label>
                       <input
-                        type="number"
-                        name="{{ c.key }}"
-                        min="0"
-                        max="120"
-                        step="1"
-                        value="{{ c.value }}"
+                        type="date"
                         class="input"
-                        placeholder="años"
+                        name="fecha_nacimiento"
+                        value="{{ c.value if c.value not in ['No disponible','No refiere'] else '' }}"
                       />
                     </div>
+
 
                   {% elif c.key == "dolor" %}
                     <div class="field-block">
@@ -122,6 +128,41 @@
                         placeholder="1–10"
                       />
                     </div>
+                  {% elif c.key == "signos_vitales" %}
+                    <div class="field-block">
+                      <label class="field-label"><strong>{{ c.label }}</strong></label>
+                      <div class="vitals-grid">
+                        <div>
+                          <label>Temp (°C)</label>
+                          <input type="number" step="0.1" class="input" name="temp_c" placeholder="37.0">
+                        </div>
+                        <div>
+                          <label>TA sistólica</label>
+                          <input type="number" class="input" name="bp_sys" placeholder="120">
+                        </div>
+                        <div>
+                          <label>TA diastólica</label>
+                          <input type="number" class="input" name="bp_dia" placeholder="80">
+                        </div>
+                        <div>
+                          <label>FC (lpm)</label>
+                          <input type="number" class="input" name="fc_bpm" placeholder="80">
+                        </div>
+                        <div>
+                          <label>FR (rpm)</label>
+                          <input type="number" class="input" name="fr_rpm" placeholder="16">
+                        </div>
+                        <div>
+                          <label>SpO₂ (%)</label>
+                          <input type="number" class="input" name="spo2_pct" placeholder="98">
+                        </div>
+                      </div>
+
+                      {% if c.value and c.value not in ['No refiere'] %}
+                        
+                      {% endif %}
+                    </div>
+
 
                   {# === Resto: textarea alargable (vertical) === #}
                   {% else %}
@@ -141,11 +182,8 @@
           </ul>
 
 
-          <button
-            type="submit"
-            formmethod="get"
-            formaction="{{ url_for('routes.index', tel=telefono, txid=txid) }}"
-          >Seguir    </button>
+          <button type="submit">Revisar y confirmar</button>
+
 
         </form>
       {% endif %}

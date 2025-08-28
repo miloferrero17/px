@@ -205,6 +205,29 @@ class BaseModel:
                 raise DatabaseError(f"No se encontró registro con {field}={value} en {self.table_name}.")
         except Exception as e:
             raise DatabaseError(f"Error al eliminar registro en {self.table_name}: {e}")
+    def upsert(self, row: Dict[str, Any], on_conflict: str) -> Dict[str, Any]:
+        """
+        Insert-or-Update usando índice único (p.ej. on_conflict='tx_id').
+        Requiere que la tabla tenga ese índice único creado.
+        insertar o, si hay duplicado por on_conflict, merge/actualizar y devolver la fila.
+        """
+        try:
+            url = f"{self.base_url}?on_conflict={on_conflict}"
+            headers = self.headers.copy()
+            # Devolver representación + merge de duplicados (upsert real)
+            prefer = headers.get("Prefer", "return=representation")
+            if "resolution=merge-duplicates" not in prefer:
+                prefer = f"{prefer},resolution=merge-duplicates"
+            headers["Prefer"] = prefer
+
+            r = requests.post(url, headers=headers, json=row, timeout=10)
+            if r.status_code >= 400:
+                raise DatabaseError(f"Upsert error {r.status_code}: {r.text}")
+            data = r.json()
+            return data[0] if isinstance(data, list) and data else data
+        except Exception as e:
+            raise DatabaseError(f"Error en upsert {self.table_name}: {e}")
+
 
 
 # Definición de la clase UsersRegister para convertir registros de la tabla "users"

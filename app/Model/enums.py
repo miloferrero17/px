@@ -18,6 +18,8 @@ class DataType(Enum):
     VARCHAR = 11
     INT = 12
     TEXT = "text"
+    JSON = "json"
+    DATE = "date"  # permite marcar campos como JSON y validarlos/enviarlos como dict/list
 
 
 class GuestAttendanceStatus(Enum):

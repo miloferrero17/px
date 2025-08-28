@@ -131,17 +131,24 @@ form button:hover {
   padding: 0;
 }
 
-/* === Ancho UNIFICADO para TODOS los controles === */
+/* === Base de inputs en cards (flexible) === */
 .cards .input{
   box-sizing: border-box;
-  width: 680px;      /* ← fija el ancho */
-  max-width: 680px;
-  min-width: 680px;
+  width: 100%;
+  max-width: 680px;     /* limite razonable en desktop */
+  /* sin min-width -> permite variantes compactas */
   padding: 8px 10px;
   border: 1px solid #d9e0e8;
   border-radius: 10px;
   font: inherit;
 }
+/* Modificador para inputs compactos (p.ej., signos vitales) */
+.cards .input--compact{
+  width: 220px;
+  max-width: 220px;
+}
+
+
 .cards select.input{
   appearance: auto;
   -webkit-appearance: auto;
@@ -182,8 +189,27 @@ form button:hover {
     min-width: 0;
   }
 }
+/* ===== Signos vitales ===== */
+.vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 220px);
+  gap: 12px 16px;
+  justify-content: start;
+  align-items: end;
+}
+.vital label {
+  display: block;
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 4px;
+}
 
-
+.field-block{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 680px;
+}
 /* Header principal */
 .app-header {
   display: flex;
@@ -206,3 +232,13 @@ form button:hover {
   width: 80px !important;
   height: auto !important;
 }
+
+
+.actions { display:flex; gap:12px; margin-top:16px; }
+.btn {
+  padding:10px 16px; border-radius:10px;
+  border:1px solid #d9e0e8; background:#fff; cursor:pointer;
+}
+.btn.primary { background:#005AAC; color:#fff; border-color:#005AAC; }
+.btn:hover { filter: brightness(0.98); }
+.btn.primary:hover { background:#00C2F3; border-color:#00C2F3; }

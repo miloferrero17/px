@@ -1,5 +1,5 @@
 import flask
-from flask import request, current_app, render_template
+from flask import request, current_app, render_template, flash
 import json
 from datetime import timedelta
 from dateutil.parser import isoparse
@@ -13,6 +13,9 @@ from app.routes import routes as bp # usamos el mismo blueprint "routes"
 import json
 import re
 from app.services import reporting
+
+from datetime import datetime, timezone, timedelta
+
 
 
 def parse_report_lines(text: str):
@@ -197,13 +200,20 @@ def _consulta():
     )
 
     # 4) Render: seguimos en QA, pero pasamos también "cards" para pintarlas bajo el H1
+    encounter_started_at = datetime.now(tz=timezone(timedelta(hours=-3))).isoformat()
+
     return render_template(
         "index.html",
         step="qa",
         interacciones=interacciones,
         cards=cards,
-        telefono=tel,   # <- asegúrate de que "tel" exista arriba; si es "telefono", usa ese nombre
+        telefono=tel,
         txid=txid,
+
+        # 👇 NUEVOS: los usa el HTML como <input type="hidden">
+        encounter_started_at=encounter_started_at,
+        clinician_name="Virginia Fux",
+        clinician_license="MP123",
     )
 
 @bp.route("/consulta", methods=["GET"])
@@ -242,3 +252,127 @@ def _normalize_messages(raw):
         return [{"role": "assistant", "content": raw}]
 
     return []
+from flask import request, render_template
+from app.services import reporting  # helpers que ya definiste (UI_KEYS, build_vitals_dict, etc.)
+import json
+
+@bp.post("/consulta/revisar")
+def revisar():
+    form = request.form
+
+    # 1) Reconstruir dict “tal cual UI” (solo claves de la UI)
+    report_dict = {k: form.get(k, "") for k in reporting.UI_KEYS}
+
+    # 2) Signos vitales estructurados (desde los 6 inputs)
+    vitals = reporting.build_vitals_dict(
+        temp_c=form.get("temp_c"),
+        bp_sys=form.get("bp_sys"),
+        bp_dia=form.get("bp_dia"),
+        fc_bpm=form.get("fc_bpm"),
+        fr_rpm=form.get("fr_rpm"),
+        spo2_pct=form.get("spo2_pct"),
+    )
+    sv_text = reporting.format_vitals_text(vitals)
+
+    # 3) Síntomas asociados como lista normalizada
+    assoc_list = reporting.normalize_associated_symptoms(form.get("sintomas_asociados"))
+
+    # 4) Snapshot final + hash canónico
+    birth_date = form.get("fecha_nacimiento") or form.get("birth_date")
+    final_summary = reporting.make_final_summary(
+        report_dict,
+        birth_date,
+        overrides={"signos_vitales": sv_text},
+    )
+    content_sha256 = reporting.hash_canonico(final_summary)
+
+    # 5) Render de la pantalla de revisión (AÚN NO guardamos)
+    return render_template(
+        "review.html",
+        tx_id=form.get("tx_id"),
+        encounter_started_at=form.get("encounter_started_at"),
+        clinician_name=form.get("clinician_name"),
+        clinician_license=form.get("clinician_license"),
+        final_summary=final_summary,
+        content_sha256=content_sha256,
+        vitals=vitals,
+        assoc_list=assoc_list,
+    )
+
+from app.Model.px_hce_report import PxHceReport
+from app.services import reporting
+@bp.post("/consulta/aceptar")
+def aceptar():
+    form = request.form
+
+    # 1) Datos base
+    now_ar = datetime.now(tz=timezone(timedelta(hours=-3))).isoformat()
+    tx_id = int(form.get("tx_id"))
+
+    # 2) Reconstrucción de estructuras
+    final_summary = {k: form.get(k) for k in reporting.UI_KEYS if form.get(k) is not None}
+    vitals = json.loads(form.get("vitals_json") or "{}")
+    assoc_list = json.loads(form.get("associated_json") or "[]")
+
+    # 3) Dolor: número → pain_scale; texto → pain_text
+    dolor_raw = (final_summary.get("dolor") or "").strip()
+    pain_scale = int(dolor_raw) if dolor_raw.isdigit() else None
+    pain_text = None if pain_scale is not None else (dolor_raw or None)
+
+    # 4) Mapeo UI → columnas de px_hce_report
+    row = {
+        # Identificación / trazabilidad
+        "contact_id": None,                     # si aún no lo tenés, dejalo NULL
+        "tx_id": tx_id,
+
+        # Paciente
+        "patient_dni": form.get("patient_dni") or final_summary.get("patient_dni"),
+        "birth_date":  final_summary.get("fecha_nacimiento") or None,
+        "genero":      final_summary.get("genero") or None,
+
+        # Encuentro
+        "encounter_class": "emergency",
+        "encounter_started_at": form.get("encounter_started_at") or now_ar,
+        "encounter_ended_at": now_ar,
+
+        # Profesional
+        "clinician_name":   form.get("clinician_name") or "Virginia Fux",
+        "clinician_license": form.get("clinician_license") or "MP123",
+
+        # Núcleo clínico
+        "chief_complaint":     final_summary.get("motivo_consulta"),
+        "main_symptom":        final_summary.get("sintoma_principal"),
+        "associated_symptoms": assoc_list,
+        "trigger_factor":      final_summary.get("factor_desencadenante"),
+        "onset_text":          final_summary.get("inicio"),
+        "evolucion":           final_summary.get("evolucion"),
+        "meds_taken_prior":    final_summary.get("medicacion_recibida"),
+        "pain_scale":          pain_scale,
+        "pain_text":           pain_text,
+        "vitals":              vitals,
+        "triage_text":         final_summary.get("triage"),
+        "physical_exam":       final_summary.get("examen_fisico"),
+
+        # Antecedentes
+        "personal_history":      final_summary.get("antecedentes_personales"),
+        "family_history":        final_summary.get("antecedentes_familiares"),
+        "surgeries":             final_summary.get("cirugias_previas"),
+        "allergies":             final_summary.get("alergias"),
+        "current_medication":    final_summary.get("medicacion_habitual"),
+        "pregnancy_status":      final_summary.get("embarazo"),
+        "immunizations_summary": final_summary.get("vacunas"),
+
+        # Snapshot + integridad
+        "final_summary":   final_summary,
+        "content_sha256":  form.get("content_sha256"),
+    }
+
+    repo = PxHceReport()
+    saved = repo.upsert_by_tx(row)  # upsert por tx_id
+
+    flash("Consulta guardada correctamente.", "success")
+    return render_template(
+        "save_HC.html",
+        report_id=saved.get("id"),
+        tx_id=saved.get("tx_id"),
+    )

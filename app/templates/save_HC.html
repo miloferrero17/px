@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Guardado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="review-wrap" style="max-width:900px;margin:24px auto;padding:0 16px">
+    <h1>¡Guardado!</h1>
+    <p>ID de reporte: <strong>{{ report_id }}</strong></p>
+    <p>Transacción (tx): <strong>{{ tx_id }}</strong></p>
+    <p><a class="btn" href="{{ url_for('routes.index') }}">Volver</a></p>
+  </div>
+</body>
+</html>

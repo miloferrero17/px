@@ -78,3 +78,33 @@ def is_attendance_status(value: Any) -> bool:
 def is_text(value: Any) -> bool:
     """Valida si el valor es un texto largo."""
     return isinstance(value, str)
+
+def is_json(value: Any) -> bool:
+    """
+    Acepta:
+      - dict/list nativos de Python (para guardar en JSONB sin serializar)
+      - string que sea JSON válido (compatibilidad)
+    """
+    if isinstance(value, (dict, list)):
+        return True
+    if isinstance(value, str):
+        try:
+            _json.loads(value)
+            return True
+        except Exception:
+            return False
+    return False
+from datetime import datetime, date
+
+def is_date(value: Any) -> bool:
+    # Aceptar date nativo
+    if isinstance(value, date):
+        return True
+    # Aceptar string ISO YYYY-MM-DD
+    if isinstance(value, str):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+            return True
+        except Exception:
+            return False
+    return False
