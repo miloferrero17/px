@@ -12,12 +12,12 @@ def ejecutar_nodo(nodo_id, variables):
 
 
 #############################################################
-# PX - WA B2B
+# PX GUARDIA
 #############################################################
 
 def nodo_204(variables):
     """
-    Ley de datos
+    Nodo Consentimiento ley de datos 25.326
     """
     import json
     import app.services.brain as brain
@@ -93,10 +93,9 @@ def nodo_204(variables):
 def nodo_206(variables):
     """
     Nodo DNI
-    
+    """
 
-
-
+    """
     Pide DNI (7–8 dígitos). Normaliza, valida y controla reintentos.
     - Válido  -> salta a 205 
     - Inválido-> hasta 2 reintentos; luego informa y vuelve a 200
@@ -198,18 +197,30 @@ def nodo_207(variables):
 
 def nodo_205(variables):
     """
-    Nodo inicial de bienvenida en el flujo.
+    Nodo ¿Que te trae a la guardia?
     """
-    #import app.services.brain as brain
+    #import app.services.twilio_service as twilio
+    import app.services.brain as brain
+    #numero_limpio = variables["numero_limpio"]
+    #sender_number = "whatsapp:+" + numero_limpio
     body = variables.get("body", "").strip().lower()
-    print(body)
+    #twilio.send_whatsapp_message(body, sender_number, None)
 
+    
+    mensaje_credential = [{
+        "role": "system",
+        "content":"Extraé de este texto el UNICAMENTE el primer nombre con únicamente la primera letra mayúscula: "+body
+    }]
+    
+    result1 = brain.ask_openai(mensaje_credential)
+    
+    
     response_text = (
-        "¿Que te trae a la guardia?" )
+        result1 + ": ¿Que te trae a la guardia?" )
     
     
     return {
-        "nodo_destino": 207,
+        "nodo_destino": 201,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
