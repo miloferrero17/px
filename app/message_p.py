@@ -61,10 +61,18 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     numero_limpio = limpiar_numero(to)
 
     WELCOME_MSG = (
-        "👋 Hola, soy el co-piloto de PX.\n"
-        "Necesitamos tu consentimiento para tratar tus datos según la Ley 25.326.\n"
-        "Respondé 'Acepto' si aceptás.\n"
-        "Más info: pacientex.com.ar"
+        "👋 Hola, soy el asistente de PX Salud.\n"  
+        "Antes de continuar necesitamos tu consentimiento según la Ley 25.326.\n\n"
+
+        "👉 Información clave:\n"    
+        " • Responsable: PX Salud S.A.\n"    
+        " • Finalidad: orientarte sobre tu estado de salud.\n"    
+        " • Datos: algunos son obligatorios (DNI, credencial, síntomas).\n"    
+        " • Destino: sólo profesionales de salud autorizados.\n"    
+        " • Derechos: podés pedir acceso, corrección o borrado en cualquier momento.\n\n"    
+
+        "✅ Si estás de acuerdo respondé 'Acepto'.\n"    
+        "❌ Si no, cerrá este chat y no guardaremos tus datos.\n"  
     )
 
     tx = Transactions()
