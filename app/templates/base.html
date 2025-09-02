@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Gestión de Consultas{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+  <!-- Header (genérico para pantallas 1 y 2) -->
+  {% block header %}
+  <header class="app-header">
+    <img
+      src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
+      alt="Logo Sanatorio Mater Dei"
+      class="app-logo"
+    >
+    <h1 class="app-title">Gestión de consultas</h1>
+  </header>
+  {% endblock %}
+
+  <!-- Flash messages (global) -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, msg in messages %}
+          <li class="{{ category }}">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Contenido -->
+    <main class="section {% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body_class %}page-simple{% endblock %}
+
+{% block title %}Gestión de Consultas – Ingresar teléfono{% endblock %}
+
+{% block content %}
+  <h1 class="section-title">Ingresá el teléfono</h1>
+  <form method="get" action="{{ url_for('routes.index') }}">
+    <input type="text" name="tel" placeholder="Ej. 5491123456789" required>
+    <button type="submit">Consultar</button>
+  </form>
+{% endblock %}

@@ -104,7 +104,7 @@ def nodo_206(variables):
 
     P1 = "Para continuar necesito tu DNI."
     P2 = "El DNI debe tener 7 u 8 números. Probá de nuevo."
-    PF = "No pude validar tu DNI. Volvamos a empezar."
+    PF = "No pude validar tu DNI."
 
     # 1) Validar
     body = (variables.get("body") or "").strip()
@@ -140,6 +140,7 @@ def nodo_206(variables):
             attempts += 1
 
     # 3) Elegir el próximo mensaje según intentos
+    
     if attempts == 0:
         prompt = P1
         next_node = 206
@@ -150,6 +151,7 @@ def nodo_206(variables):
         result = "Abierta"
     else:
         result = "Cerrada"
+        new_cs = json.dumps(history)
         return {
             "nodo_destino": 204,
             "subsiguiente": 1,

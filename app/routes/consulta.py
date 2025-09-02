@@ -123,12 +123,12 @@ def _consulta():
     txid = request.values.get("txid")
 
     if not tel:
-        return render_template("index.html", step="phone")
+        return render_template("medico_seleccionar_telefono.html")
 
     contacto = Contacts().get_by_phone(tel)
     if not contacto:
         flask.flash(f"El teléfono {tel} no está registrado.", "error")
-        return render_template("index.html", step="phone")
+        return render_template("medico_seleccionar_telefono.html")
 
     if not txid:
         sesiones = Transactions().get_by_contact_id(contacto.contact_id)
@@ -144,7 +144,12 @@ def _consulta():
                 "timestamp": dt_ajustada.strftime("%Y-%m-%d | %H:%M")
             })
 
-        return render_template("index.html", step="select", telefono=tel, sesiones=sesiones_formateadas)
+        return render_template(
+            "paciente_consultas.html",
+            telefono=tel,
+            sesiones=sesiones_formateadas
+        )
+
 
     # 3.4 Mostrar Q/A de la transacción
     '''

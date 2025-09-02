@@ -1,439 +1,219 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Gestión de Consultas</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-  <!-- Header con logo y título -->
-  <header class="app-header">
-    <img
-      src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
-      alt="Logo Sanatorio Mater Dei"
-      class="app-logo"
-    >
-    <h1 class="app-title">Backoffice médico</h1>
+{% extends "base.html" %}
+{% block main_class %}section--fluid{% endblock %}
+
+{% block title %}Consulta {{ txid }} – {{ telefono }}{% endblock %}
+
+{# Helper: obtener valor por key desde "cards" #}
+{% macro val(k) -%}
+  {%- for c in cards -%}{%- if c.key == k -%}{{ (c.value or '')|trim }}{%- endif -%}{%- endfor -%}
+{%- endmacro %}
+
+{# Tomo genero y fecha de nacimiento para el header #}
+{% set ns = namespace(genero='', birth='') %}
+{% for c in cards %}
+  {% if c.key == 'genero' %}{% set ns.genero = (c.value or '')|trim %}{% endif %}
+  {% if c.key in ['fecha_nacimiento','birth_date'] %}{% set ns.birth = (c.value or '')|trim %}{% endif %}
+{% endfor %}
+
+{# ===== Header específico de esta pantalla ===== #}
+{% block header %}
+  <header class="app-header" style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+    <!-- IZQUIERDA: logo + “nombre” (teléfono) · edad · género -->
+    <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+      <img
+        src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
+        alt="Logo Sanatorio Mater Dei" class="app-logo">
+      <div class="session-title" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <span><strong>{{ telefono }}</strong></span>
+        <span>· <span id="age-text" data-birth="{{ ns.birth|e }}">—</span> años</span>
+        <span>· {{ ns.genero or "—" }}</span>
+      </div>
+    </div>
+
+    <!-- CENTRO: triage (refleja el input) -->
+    <div style="justify-self:center;">
+      <span id="triage-chip" class="btn" style="pointer-events:none;">
+        {{ val('triage') }}
+      </span>
+    </div>
+
+    <!-- DERECHA: acciones -->
+    <div class="actions actions--header" style="justify-self:end;">
+      <button form="consulta-form" type="submit" class="btn primary">Revisar y confirmar</button>
+      <a class="btn" href="{{ url_for('routes.index', tel=telefono) }}">Cancelar</a>
+    </div>
   </header>
- 
-  <!-- Flash messages -->
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <ul class="flash-list">
-        {% for category, msg in messages %}
-          <li class="{{ category }}">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
+{% endblock %}
 
-  <div class="section">
-    {% if step == "phone" %}
-      <h1 class="section-title">Ingresá el teléfono</h1>
-      <form method="get" action="{{ url_for('routes.index') }}">
-        <input type="text" name="tel" placeholder="Ej. 5491123456789">
-        <button type="submit">Consultar</button>
-      </form>
+{% block content %}
+  <div class="px-dashboard" style="height: calc(100vh - var(--header-h)); grid-template-rows: 1fr;">
 
-    {% elif step == "select" %}
-      <h1 class="section-title">Consultas de {{ telefono }}</h1>
-      <ul class="session-list">
-        {% for s in sesiones %}
-          <!-- la más nueva (loop.first) en azul y con etiqueta -->
-          <li class="{{ 'open' if loop.first else 'closed' }}">
-            <a href="{{ url_for('routes.index', tel=telefono, txid=s.id) }}">
-              {{ s.timestamp }}{% if loop.first %} – Última consulta{% endif %}
-            </a>
-          </li>
-        {% endfor %}
-      </ul>
-      <p><a href="{{ url_for('routes.index') }}">&larr; Cambiar teléfono</a></p>
+    <form id="consulta-form" method="post" action="{{ url_for('routes.revisar') }}">
 
-
-    {% elif step == "qa" %}
-      <h1 class="section-title">Consulta {{ txid }} de {{ telefono }}</h1>
-
-      {# === Cards del reporte (debajo del H1) === #}
-      {% if cards %}
-        <h2 class="section-title">Datos personales</h2>
-
-        <form method="post" action="{{ url_for('routes.revisar') }}" class="form">
-          {{ csrf_token() if csrf_token is defined }}
-          <input type="hidden" name="tel" value="{{ telefono }}">
-          <input type="hidden" name="txid" value="{{ txid }}">
-
-
-          
-          <input type="hidden" name="tx_id" value="{{ txid }}">
-          <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at }}">
-          <input type="hidden" name="clinician_name" value="{{ clinician_name or 'Virginia Fux' }}">
-          <input type="hidden" name="clinician_license" value="{{ clinician_license or 'MP123' }}">
-
-
-
-          <ul class="cards">
-            {% for c in cards %}
-              {% if c.type == "section" %}
-                <!-- Título de sección -->
-                <li class="cards-section">
-                  <h2 class="section-title">{{ c.label }}</h2>
-                </li>
-
-              {% else %}
-                <li class="card">
-                  {# === Selects (no alargables) === #}
-                  {% if c.key == "genero" %}
-                    <div class="field-inline">
-                      <label><strong>{{ c.label }}</strong></label>
-                      <select name="{{ c.key }}" class="input">
-                        {% for opt in ["Mujer","Hombre","Otro"] %}
-                          <option value="{{ opt }}" {{ "selected" if c.value == opt else "" }}>{{ opt }}</option>
-                        {% endfor %}
-                      </select>
-                    </div>
-
-                  {% elif c.key == "embarazo" %}
-                    <label><strong>{{ c.label }}</strong></label>
-                    {% set val = c.value|default('')|trim %}
-                    <select name="{{ c.key }}" class="input">
-                      <option value="Si" {{ "selected" if val == "Sí" else "" }}>Si</option>
-                      <option value="No" {{ "selected" if val in ["", "No", "No refiere", "No disponible"] else "" }}>No</option>
-                      <option value="Desconoce" {{ "selected" if val == "Desconoce" else "" }}>Desconoce</option>
-                    </select>
-
-                  {# === Numéricos (no alargables) === #}
-                  {% elif c.key == "fecha_nacimiento" %}
-                    <div class="field-inline">
-                      <label><strong>{{ c.label }}</strong></label>
-                      <input
-                        type="date"
-                        class="input"
-                        name="fecha_nacimiento"
-                        value="{{ c.value if c.value not in ['No disponible','No refiere'] else '' }}"
-                      />
-                    </div>
-
-
-                  {% elif c.key == "dolor" %}
-                    <div class="field-block">
-                      <label class="field-label"><strong>{{ c.label }}</strong></label>
-                      <input
-                        type="number"
-                        name="{{ c.key }}"
-                        min="1"
-                        max="10"
-                        step="1"
-                        value="{{ c.value | replace('/10','') }}"
-                        class="input"
-                        placeholder="1–10"
-                      />
-                    </div>
-                  {% elif c.key == "signos_vitales" %}
-                    <div class="field-block">
-                      <label class="field-label"><strong>{{ c.label }}</strong></label>
-                      <div class="vitals-grid">
-                        <div>
-                          <label>Temp (°C)</label>
-                          <input type="number" step="0.1" class="input" name="temp_c" placeholder="37.0">
-                        </div>
-                        <div>
-                          <label>TA sistólica</label>
-                          <input type="number" class="input" name="bp_sys" placeholder="120">
-                        </div>
-                        <div>
-                          <label>TA diastólica</label>
-                          <input type="number" class="input" name="bp_dia" placeholder="80">
-                        </div>
-                        <div>
-                          <label>FC (lpm)</label>
-                          <input type="number" class="input" name="fc_bpm" placeholder="80">
-                        </div>
-                        <div>
-                          <label>FR (rpm)</label>
-                          <input type="number" class="input" name="fr_rpm" placeholder="16">
-                        </div>
-                        <div>
-                          <label>SpO₂ (%)</label>
-                          <input type="number" class="input" name="spo2_pct" placeholder="98">
-                        </div>
-                      </div>
-
-                      {% if c.value and c.value not in ['No refiere'] %}
-                        
-                      {% endif %}
-                    </div>
-
-
-                  {# === Resto: textarea alargable (vertical) === #}
-                  {% else %}
-                    <div class="field-block">
-                      <label class="field-label"><strong>{{ c.label }}</strong></label>
-                      <textarea
-                        name="{{ c.key }}"
-                        class="input textarea-grow"
-                        rows="2"
-                        placeholder="Escriba aquí…"
-                      >{{ c.value }}</textarea>
-                    </div>
-                  {% endif %}
-                </li>
-              {% endif %}
-            {% endfor %}
-          </ul>
-
-
-          <button type="submit">Revisar y confirmar</button>
-
-
-        </form>
-      {% endif %}
-
-      <p><a href="{{ url_for('routes.index', tel=telefono) }}">&larr; Volver a consultas</a></p>
-    {% endif %}
-
-
-  </div>
-</body>
-</html>
-
-<!--
-      {# === Cards del reporte (debajo del H1) === #}
-      {% if cards %}
-        <h2 class="section-title">Datos personales</h2>
-        <ul class="cards">
-          {% for c in cards %}
-            {% if c.type == "section" %}
-              <li class="cards-section">
-                <h2 class="section-title">{{ c.label }}</h2>
-              </li>
-            {% else %}
-              <li class="card">
-                <p><strong>{{ c.label }}</strong></p>
-                <p>{{ c.value }}</p>
-              </li>
-            {% endif %}
-          {% endfor %}
-        </ul>
-      {% endif %}
-      -->
-<!--
-      {# === Feedback médico === #}
-      <h2 class="section-title">Feedback del médico</h2>
-      <form method="post" action="{{ url_for('routes.feedback') }}">
-        <input type="hidden" name="tel" value="{{ telefono }}">
-        <input type="hidden" name="txid" value="{{ txid }}">
-
-        <label for="rating">Puntuación (1–5):</label>
-        <select id="rating" name="rating" required>
-          {% for i in range(1,6) %}
-            <option value="{{ i }}">{{ i }}</option>
-          {% endfor %}
-        </select>
-
-        <label for="comment">Comentario:</label>
-        <textarea id="comment" name="comment" rows="4" placeholder="Agrega tus observaciones aquí..." required></textarea>
-
-        <button type="submit">Enviar Feedback</button>
-      </form>
-      -->
-
-<!--
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Gestión de Consultas</title>
-</head>
-<body>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <ul>
-        {% for category, msg in messages %}
-          <li class="{{ category }}">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-
-  <h1>Gestión de Consultas</h1>
-
-  {% if step == "phone" %}
-    <form method="get" action="{{ url_for('routes.index') }}">
-      <label for="tel">Teléfono:</label>
-      <input type="text" id="tel" name="tel" placeholder="Ej. 5491123456789">
-      <button type="submit">Consultar</button>
-    </form>
-
-  {% elif step == "select" %}
-    <p>Paciente: <strong>{{ telefono }}</strong></p>
-    <p>Seleccioná la consulta a revisar:</p>
-    <ul>
-      {% for s in sesiones %}
-        <li>
-          <a href="{{ url_for('routes.index', tel=telefono, txid=s.id) }}">
-            {{ s.timestamp }}
-          </a>
-        </li>
-      {% endfor %}
-    </ul>
-    <p><a href="{{ url_for('routes.index') }}">← Cambiar teléfono</a></p>
-
-  {% elif step == "qa" %}
-    <p>Paciente: <strong>{{ telefono }}</strong> | Consulta ID: <strong>{{ txid }}</strong></p>
-
-    <h2>Historial de conversación</h2>
-    {% for qa in qas %}
-      <p>
-        <strong>{{ qa.pregunta }}</strong><br>
-        {{ qa.respuesta }}
-      </p>
-      <hr>
-    {% endfor %}
-
-    <h2>Feedback del médico</h2>
-    <form method="post" action="{{ url_for('routes.feedback') }}">
+      {{ csrf_token() if csrf_token is defined }}
+      <!-- Hidden requeridos -->
       <input type="hidden" name="tel" value="{{ telefono }}">
       <input type="hidden" name="txid" value="{{ txid }}">
+      <input type="hidden" name="tx_id" value="{{ txid }}">
+      <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at }}">
+      <input type="hidden" name="clinician_name" value="{{ clinician_name or 'Virginia Fux' }}">
+      <input type="hidden" name="clinician_license" value="{{ clinician_license or 'MP123' }}">
+      <input type="hidden" name="fecha_nacimiento" value="{{ ns.birth }}">
+      <input type="hidden" name="genero" id="genero-hidden" value="{{ ns.genero }}">
 
-      <label for="rating">Puntuación (1–5):</label>
-      <select id="rating" name="rating">
-        {% for i in range(1, 6) %}
-          <option value="{{ i }}">{{ i }}</option>
-        {% endfor %}
-      </select>
-      <br><br>
+      <div class="grid3">
+        <!-- ======================= Columna 1 ======================= -->
+        <section class="col" style="min-height:0;">
+          <div style="height:100%; overflow:auto; padding-right:6px;">
+            <article class="card" aria-labelledby="c1-h" style="height:100%; display:flex; flex-direction:column; min-height:0;">
+              <header id="c1-h">Consulta actual</header>
 
-      <label for="comment">Comentario:</label><br>
-      <textarea id="comment" name="comment" rows="4" cols="50"
-                placeholder="Agrega tus observaciones aquí..."></textarea>
-      <br><br>
+            <div class="field-block">
+              <label class="field-label"><strong>Motivo de consulta</strong></label>
+              <input class="input" type="text" name="motivo_consulta" value="{{ val('motivo_consulta') }}">
+            </div>
 
-      <button type="submit">Enviar Feedback</button>
-    </form>
+            <div class="field-block">
+              <label class="field-label"><strong>Síntoma principal</strong></label>
+              <input class="input" type="text" name="sintoma_principal" value="{{ val('sintoma_principal') }}">
+            </div>
+            <div class="field-block">
+              <label class="field-label"><strong>Síntomas asociados</strong></label>
+              <textarea class="input textarea-fixed" name="sintomas_asociados">{{ val('sintomas_asociados') }}</textarea>
+            </div>
 
-    <p><a href="{{ url_for('routes.index', tel=telefono) }}">← Volver a listado de consultas</a></p>
-  {% endif %}
+            <div class="field-block">
+              <label class="field-label"><strong>Factor desencadenante</strong></label>
+              <input class="input" type="text" name="factor_desencadenante" value="{{ val('factor_desencadenante') }}">
+            </div>
 
-</body>
-</html>
+            <div class="field-block">
+              <label class="field-label"><strong>Dolor</strong></label>
+              <input class="input" type="text" name="dolor" value="{{ val('dolor') }}" placeholder="0–10 o texto">
+            </div>
 
+            <div class="field-block">
+              <label class="field-label"><strong>Inicio</strong></label>
+              <input class="input" type="text" name="inicio" value="{{ val('inicio') }}">
+            </div>
 
+            <div class="field-block">
+              <label class="field-label"><strong>Evolución</strong></label>
+              <textarea class="input textarea-fixed" name="evolucion">{{ val('evolucion') }}</textarea>
+            </div>
 
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Consulta y Feedback</title>
-</head>
-<body>
-  <h1>Buscar paciente</h1>
-  <form method="get" action="{{ url_for('routes.index') }}">
-    <input name="tel" placeholder="Teléfono" value="{{ telefono }}">
-    <button>Consultar</button>
-  </form>
+            <div class="field-block">
+              <label class="field-label"><strong>Embarazo</strong></label>
+              {% set embar = val('embarazo') %}
+              <select class="input" name="embarazo" required>
+                <option value="" disabled {{ (embar=='' or embar=='Seleccionar') and 'selected' or '' }}>Seleccionar…</option>
+                <option value="Si"         {{ embar in ['Si','Sí'] and 'selected' or '' }}>Sí</option>
+                <option value="No"         {{ embar=='No' and 'selected' or '' }}>No</option>
+                <option value="Desconoce"  {{ embar=='Desconoce' and 'selected' or '' }}>Desconoce</option>
+              </select>
+            </div>
 
-  {% if qas %}
-    <hr>
-    <h2>Historial</h2>
-    {% for qa in qas %}
-      <p><strong>{{ qa.pregunta }}</strong><br>{{ qa.respuesta }}</p>
-      <hr style="margin:2em 0;">
-    {% endfor %}
-
-    <h2>Feedback del médico</h2>
-    <form method="post" action="{{ url_for('routes.feedback') }}">
-      <input type="hidden" name="tel"   value="{{ telefono }}">
-      <label>Puntuación (1-5):</label>
-      <select name="rating">
-        {% for i in range(1,6) %}
-          <option value="{{ i }}">{{ i }}</option>
-        {% endfor %}
-      </select>
-      <br><br>
-      <label>Comentario:</label><br>
-      <textarea name="comment" rows="4" cols="50"></textarea><br><br>
-      <button>Enviar Feedback</button>
-    </form>
-  {% endif %}
-</body>
-</html>
+            <div class="field-block">
+              <label class="field-label"><strong>Medicación recibida</strong></label>
+              <textarea class="input textarea-fixed" name="medicacion_recibida">{{ val('medicacion_recibida') }}</textarea>
+            </div>
+          </article>
+        </section>
 
 
 
-<<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Historial y Feedback</title>
-</head>
-<body>
-  <h1>Historial de conversación</h1>
-  <form method="post" action="{{ url_for('routes.index') }}">
-    <input name="tel" placeholder="Teléfono" value="{{ telefono }}">
-    <button>Consultar</button>
-  </form>
+        <!-- ======================= Columna 2 (SCROLLEABLE ENTERA) ======================= -->
+        <section class="col" style="min-height:0;">
 
-  {% if qas %}
-    <div style="margin-top:20px;">
-      {% for qa in qas %}
-        <p><strong>{{ qa.pregunta }}</strong><br>
-        {{ qa.respuesta }}</p>
-        <hr style="margin:2em 0;">
-      {% endfor %}
-    </div>
 
-    <h2>Feedback del médico</h2>
-    <form method="post" action="{{ url_for('routes.feedback') }}">
-      <input type="hidden" name="tel" value="{{ telefono }}">
-      <div>
-        <label>Puntuación (1-5):</label>
-        <select name="rating">
-          {% for i in range(1,6) %}
-            <option value="{{ i }}">{{ i }}</option>
-          {% endfor %}
-        </select>
+          <div style="height:100%; overflow:auto; padding-right:6px;">
+
+            <article class="card" aria-labelledby="c2a-h" style="margin-bottom: var(--gap);">
+              <header id="c2a-h">Antecedentes del paciente</header>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Antecedentes personales</strong></label>
+                <textarea class="input textarea-fixed" name="antecedentes_personales">{{ val('antecedentes_personales') }}</textarea>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Antecedentes familiares relevantes</strong></label>
+                <textarea class="input textarea-fixed" name="antecedentes_familiares">{{ val('antecedentes_familiares') }}</textarea>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Cirugías previas</strong></label>
+                <textarea class="input textarea-fixed" name="cirugias_previas">{{ val('cirugias_previas') }}</textarea>
+              </div>
+            </article>
+          
+
+            <article class="card" aria-labelledby="c2b-h">
+              <header id="c2b-h">Medicación</header>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Medicación habitual</strong></label>
+                <textarea class="input textarea-fixed" name="medicacion_habitual">{{ val('medicacion_habitual') }}</textarea>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Alergias</strong></label>
+                <textarea class="input textarea-fixed" name="alergias">{{ val('alergias') }}</textarea>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label"><strong>Vacunas</strong></label>
+                <textarea class="input textarea-fixed" name="vacunas">{{ val('vacunas') }}</textarea>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- ======================= Columna 3 ======================= -->
+        <section class="col" style="min-height:0;">
+          <article class="card card-examen" aria-labelledby="c3-h"
+                  style="height:100%; display:flex; flex-direction:column; min-height:0;">
+            <header id="c3-h">Examen físico / Anamnesis</header>
+            <div class="field-block" style="flex:1 1 auto; min-height:0;">
+              <label class="sr-only">Examen físico / Anamnesis</label>
+              <textarea class="input textarea-fixed" name="examen_fisico"
+                        style="height:100%; min-height:0; max-height:none;">{{ val('examen_fisico') }}</textarea>
+            </div>
+          </article>
+        </section>
+
+
+
       </div>
-      <div style="margin-top:1em">
-        <label>Comentario:</label><br>
-        <textarea name="comment" rows="4" cols="50"></textarea>
-      </div>
-      <button style="margin-top:1em">Enviar Feedback</button>
     </form>
-  {% endif %}
+  </div>
+{% endblock %}
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <ul>
-        {% for category, msg in messages %}
-          <li class="{{ category }}">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-</body>
-</html>
--->
+{% block scripts %}
+<script>
+  // Edad a partir de fecha_nacimiento (YYYY-MM-DD o ISO)
+  (function(){
+    const el = document.getElementById('age-text');
+    const raw = el?.dataset.birth || '';
+    if (!raw) return;
+    const d = new Date(raw);
+    if (isNaN(d)) return;
+    const t = new Date();
+    let age = t.getFullYear() - d.getFullYear();
+    const m = t.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && t.getDate() < d.getDate())) age--;
+    el.textContent = age;
+  })();
 
-<!-- 
-!DOCTYPE html>
-<html>
-<head><title>Historial</title></head>
-<body>
-  <h1>Historial de conversación</h1>
-  <form method="post">
-    <input name="tel" placeholder="Teléfono">
-    <button>Consultar</button>
-  </form>
+  // Reflejar triage del input al chip del header
+  (function(){
+    const input = document.getElementById('triage-input');
+    const chip  = document.getElementById('triage-chip');
+    if (!input || !chip) return;
+    const sync = () => { chip.textContent = input.value || '—'; };
+    sync();
+    input.addEventListener('input', sync);
+  })();
+</script>
+{% endblock %}
 
-  {% if qas %}
-    <div style="margin-top:20px;">
-      {% for qa in qas %}
-        <p><strong>{{ qa.pregunta }}</strong><br>
-        {{ qa.respuesta }}</p>
-        <hr style="margin:2em 0;">
-      {% endfor %}
-    </div>
-  {% endif %}
-</body>
-</html>
--->

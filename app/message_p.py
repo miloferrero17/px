@@ -32,12 +32,12 @@ import app.services.uploader as uploader
 import app.services.decisions as decs
 #import app.services.embedding as vector
 from app.services.decisions import next_node_fofoca_sin_logica, limpiar_numero, calcular_diferencia_en_minutos,ejecutar_codigo_guardado
-import app.services.brain as brain
+
 entorno = os.getenv("ENV", "undefined")
 
 import time
 import functools
-import app.services.twilio_service as twilio
+
 
 
 def log_latency(func):
@@ -54,47 +54,50 @@ def log_latency(func):
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
-    body = body + transcription + description + pdf_text
+    # 0) Normalizar entradas (None-safe)
+    body = (body or "") + (transcription or "") + (description or "") + (pdf_text or "")
     import json
     from datetime import datetime, timezone
 
     numero_limpio = limpiar_numero(to)
 
     WELCOME_MSG = (
-        "👋 Hola, soy el asistente de PX Salud.\n"  
+        "👋 Hola, soy el asistente de PX Salud.\n"
         "Antes de continuar necesitamos tu consentimiento según la Ley 25.326.\n\n"
-
-        "👉 Información clave:\n"    
-        " • Responsable: PX Salud S.A.\n"    
-        " • Finalidad: orientarte sobre tu estado de salud.\n"    
-        " • Datos: algunos son obligatorios (DNI, credencial, síntomas).\n"    
-        " • Destino: sólo profesionales de salud autorizados.\n"    
-        " • Derechos: podés pedir acceso, corrección o borrado en cualquier momento.\n\n"    
-
-        "✅ Si estás de acuerdo respondé 'Acepto'.\n"    
-        "❌ Si no, cerrá este chat y no guardaremos tus datos.\n"  
+        "👉 Información clave:\n"
+        " • Responsable: PX Salud S.A.\n"
+        " • Finalidad: orientarte sobre tu estado de salud.\n"
+        " • Datos: algunos son obligatorios (DNI, credencial, síntomas).\n"
+        " • Destino: sólo profesionales de salud autorizados.\n"
+        " • Derechos: podés pedir acceso, corrección o borrado en cualquier momento.\n\n"
+        "✅ Si estás de acuerdo respondé 'Acepto'.\n"
+        "❌ Si no, cerrá este chat y no guardaremos tus datos.\n"
     )
 
     tx = Transactions()
+    ev = Events()
+    msj = Messages()
 
-    # 0) Bienvenida express: si aplica, enviar y sembrar TX NUEVA + ancla (nodo 204), luego RETURN
-    if message1(tx, numero_limpio):
+    # 1) Obtener contacto + event_id (antes del guard para conocer TTL del evento)
+    contacto, event_id = obtener_o_crear_contacto(numero_limpio)
+
+    # Contexto base de la sesión
+    contexto_agente = ev.get_description_by_event_id(event_id) or ""
+    base_context = json.dumps([{"role": "system", "content": contexto_agente}])
+
+    # TTL del evento (fallback 5)
+    TTL_MIN = ev.get_time_by_event_id(event_id) or 5
+
+    # 2) Guard de sesión: si corresponde, ENVIAR WELCOME y NO procesar este mensaje
+    if message1(tx, numero_limpio, TTL_MIN):
         twilio.send_whatsapp_message(WELCOME_MSG, to, None)
-
-        # contacto + evento
-        contacto, event_id = obtener_o_crear_contacto(numero_limpio)
-        # contexto base de la sesión
-        ev = Events()
-        contexto_agente = ev.get_description_by_event_id(event_id) or ""
-        base_context = json.dumps([{"role": "system", "content": contexto_agente}])
 
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
         ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
 
-        # si hay TX vigente pero vencida (>5'), cerrarla
+        # Cerrar TX abierta previa (si existe)
         try:
-            if ultima_tx is not None and tx.is_last_transaction_closed(numero_limpio) == 0 \
-               and calcular_diferencia_en_minutos(tx, numero_limpio) > 5:
+            if ultima_tx is not None and tx.is_last_transaction_closed(numero_limpio) == 0:
                 tx.update(
                     id=ultima_tx["id"],
                     contact_id=contacto.contact_id,
@@ -106,46 +109,49 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
         except Exception:
             pass
 
-        # abrir TX nueva si no hay / cerrada / vencida
-        try:
-            if ultima_tx is None or tx.is_last_transaction_closed(numero_limpio) == 1 \
-               or calcular_diferencia_en_minutos(tx, numero_limpio) > 5:
-                tx.add(
-                    contact_id=contacto.contact_id,
-                    phone=numero_limpio,
-                    name="Abierta",
-                    event_id=event_id,
-                    conversation=base_context,
-                    timestamp=now_utc,
-                    data_created=now_utc
-                )
-        except Exception:
-            pass
+        # Construir historial con WELCOME incluido
+        contexto_agente = ev.get_description_by_event_id(event_id) or ""
+        history = [
+            {"role": "system",    "content": contexto_agente},
+            {"role": "assistant", "content": WELCOME_MSG},  # <-- guardar el welcome real
+        ]
+        conversation_json = json.dumps(history)
 
-        # ANCLA: dejar último msg_key en 204 para que el próximo turno caiga en consentimiento
+        # Abrir TX nueva con el historial que incluye el WELCOME
         try:
-            msj = Messages()
+            tx.add(
+                contact_id=contacto.contact_id,
+                phone=numero_limpio,
+                name="Abierta",
+                event_id=event_id,
+                conversation=conversation_json,  # <-- ahora incluye system + welcome
+                timestamp=now_utc,
+                data_created=now_utc
+            )
+        except Exception as e:
+            print(f"[WELCOME GUARD] error abriendo TX nueva: {e}")
+
+        # Guardar el WELCOME (no el placeholder) en messages
+        try:
             nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 204
             msj.add(
                 msg_key=nodo_inicio,
-                text="[inicio de sesión]",
+                text=WELCOME_MSG,  # <-- acá va el welcome real
                 phone=numero_limpio,
                 event_id=event_id
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WELCOME GUARD] error guardando WELCOME en messages: {e}")
 
-        # Importante: no seguir con adjuntos ni workflow en este turno
+        # Enviar bienvenida y cortar: usuario deberá escribir "Acepto" luego
         return "Ok"
-    # 1) Obtener o crear contacto
-    contacto, event_id = obtener_o_crear_contacto(numero_limpio)
 
-    # 2) Gestionar sesión y registrar mensaje
+    # 3) Gestionar sesión y registrar mensaje (ya sabemos que no corresponde WELCOME)
     msg_key, conversation_str, conversation_history = gestionar_sesion_y_mensaje(
         contacto, event_id, body, numero_limpio
     )
 
-    # 3) Manejo de adjuntos SOLO si NO estamos en consentimiento (204) ni DNI (206)
+    # 4) Manejo de adjuntos SOLO si NO estamos en consentimiento (204) ni DNI (206)
     adj_handled = False
     if msg_key not in (204, 206):
         adj_handled, adj_summary, adj_kind = procesar_adjuntos(
@@ -158,33 +164,50 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
             })
             conversation_str = json.dumps(conversation_history)
 
-    # 4) Ejecutar workflow
+    # 5) Ejecutar workflow
     variables = inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history)
     variables = ejecutar_workflow(variables)
 
-    # 5) Enviar respuesta y actualizar transacción
+    # 6) Enviar respuesta y actualizar transacción
     enviar_respuesta_y_actualizar(variables, contacto, event_id, to)
 
     return "Ok"
 
 
+
+
+
 @log_latency
-
-
-def message1(tx, numero_limpio: str) -> bool:
+def message1(tx, numero_limpio: str, ttl_minutos: int) -> bool:
     """
-    True si corresponde enviar la bienvenida:
+    True si corresponde enviar la bienvenida y NO procesar este primer mensaje:
       - no existe transacción previa, o
-      - la última transacción está cerrada.
+      - la última transacción está cerrada, o
+      - la última transacción está abierta pero vencida según TTL (events.tiempo_sesion).
     """
     try:
         ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
         if ultima_tx is None:
             return True
-        return tx.is_last_transaction_closed(numero_limpio) == 1
-    except Exception:
-        # si algo falla, no spammear
+
+        # Cerrada → bienvenida
+        if tx.is_last_transaction_closed(numero_limpio) == 1:
+            return True
+
+        # Abierta: si venció por TTL de Events, bienvenida también
+        try:
+            diff_min = calcular_diferencia_en_minutos(tx, numero_limpio)
+        except Exception:
+            diff_min = None
+
+        if diff_min is not None and int(diff_min) > int(ttl_minutos):
+            return True
+
         return False
+    except Exception:
+        # en error, evitar spam
+        return False
+
 
 
 
@@ -247,18 +270,16 @@ def obtener_o_crear_contacto(numero_limpio):
 
     return contacto, event_id
 
+
 @log_latency
 def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
-    
-    
     tx, msj, ev = Transactions(), Messages(), Events()
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
-    # Nodo inicial del evento 
-    TTL_MIN = 5                       # ← expiración fija en minutos
+    # Nodo inicial del evento (el TTL ahora se controla arriba, antes del WELCOME)
     nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 204
 
-    # Contexto del agente para SEMBRAR la sesión (sin historial previo)
+    # Contexto base para sembrar la sesión (sin historial previo)
     contexto_agente = ev.get_description_by_event_id(event_id) or ""
     base_context = json.dumps([{"role": "system", "content": contexto_agente}])
 
@@ -278,7 +299,6 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
             data_created=now_utc
         )
 
-
     # --- Caso 1: primera vez que escribe (no hay TX previa) ---
     if ultima_tx is None:
         _abrir_nueva_tx()
@@ -293,20 +313,6 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
         if body_text:
             msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
 
-    # --- Caso 3: la sesión VENCIDA por tiempo ---
-    elif calcular_diferencia_en_minutos(tx, numero_limpio) > TTL_MIN:
-        tx.update(
-            id=ultima_tx["id"],
-            contact_id=contacto.contact_id,
-            phone=numero_limpio,
-            name="Cerrada",
-            timestamp=now_utc,
-            event_id=event_id
-        )
-        _abrir_nueva_tx()
-        msg_key = nodo_inicio
-        if body_text:
-            msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
     # --- Caso 4: sesión VIGENTE ---
     else:
         ultimo_mensaje = msj.get_latest_by_phone(numero_limpio)
@@ -323,6 +329,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
 
     conversation_str = json.dumps(conversation_history)
     return msg_key, conversation_str, conversation_history
+
 
 @log_latency
 def inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history):
@@ -402,7 +409,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     )
 
     if estado == "Cerrada":
-        twilio.send_whatsapp_message("Gracias!", to, None)
+        twilio.send_whatsapp_message("Fin de la consulta. Gracias!", to, None)
 
     # Guardar última pregunta / salida del bot (como hacías antes)
     Messages().add(

@@ -45,7 +45,7 @@ DEFAULTS.update({
     "antecedentes_personales": "Niega",
     "antecedentes_familiares": "Niega",
     "cirugias_previas": "Niega",
-    "embarazo": "Desconoce",
+    "embarazo": "",
     "signos_vitales": "T° N/A, FC N/A lpm, FR N/A rpm",
     "triage": "⬜⬜⬜⬜⬜ Urgencia Estimada No disponible",
 })
