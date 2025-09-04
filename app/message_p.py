@@ -56,7 +56,6 @@ def log_latency(func):
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
     # 0) Normalizar entradas (None-safe)
     body = (body or "") + (transcription or "") + (description or "") + (pdf_text or "")
-    import json
     from datetime import datetime, timezone
 
     numero_limpio = limpiar_numero(to)

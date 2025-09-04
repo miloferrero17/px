@@ -215,7 +215,7 @@ def _consulta():
         telefono=tel,
         txid=txid,
 
-        # 👇 NUEVOS: los usa el HTML como <input type="hidden">
+        # usa el HTML como <input type="hidden">
         encounter_started_at=encounter_started_at,
         clinician_name="Virginia Fux",
         clinician_license="MP123",

@@ -11,7 +11,7 @@
   /* densidad/espaciado para vista “1 pantalla” */
   --fs-base: 12px;
   --gap: 10px;
-  --header-h: 56px;
+  --header-h: 64px;
 }
 
 /* ===== Reset ===== */
@@ -96,11 +96,16 @@ form button:hover { background-color: var(--color-accent); }
 /* ===== Header superior ===== */
 .app-header {
   display: flex; align-items: center;
-  padding: 10px 20px; border-bottom: 1px solid #ddd; background-color: #fff;
+  padding: 10px 20px;
+  border-bottom: 1px solid #ddd;
+  background-color: #fff;
   height: var(--header-h);
+  position: sticky; top: 0; z-index: 100;     /* ← fijo arriba */
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);     /* ← sombra suave */
 }
+
 .app-title { font-size: 1.25rem; margin: 0; color: #012f6e; }
-.app-logo { width: 28px !important; height: 28px !important; margin-right: 8px; }
+.app-logo { width: 36px !important; height: 36px !important; margin-right: 10px; }
 
 /* ===== Botones reutilizables ===== */
 .actions { display:flex; gap:12px; margin-top:16px; }
@@ -118,7 +123,7 @@ form button:hover { background-color: var(--color-accent); }
   height: 100vh;
   display: grid;
   grid-template-rows: var(--header-h) 1fr;
-  font-size: var(--fs-base);
+  font-size: 16 px;
   line-height: 1.35;
 }
 
@@ -165,8 +170,28 @@ form button:hover { background-color: var(--color-accent); }
   font-family: inherit;
   font-size: var(--fs-base);
   padding: 6px 8px;
-  margin-bottom: 8px;
+  margin-bottom: 0;           /* <- SIN margen en el control */
   border-radius: 10px;
+}
+
+/* El espaciado lo da el contenedor (uniforme y controlado) */
+.px-dashboard .field-block{ margin-bottom: 8px; }
+.px-dashboard .card > .field-block:last-child{ margin-bottom: 0; }
+.px-dashboard .card--equal{
+  flex: 1 1 0%;
+  min-height: 0;
+}
+.px-dashboard .card--scroll{ overflow: hidden; }                 /* respeta el border-radius */
+.px-dashboard .card--scroll .scroll{ overflow: auto; }  
+/* Fondo gris claro para tarjetas marcadas como muted */
+.px-dashboard .card.card--muted{
+  background-color: #F2F4F7 !important;  /* gris neutro */
+  border: 1px solid #E5E7EB;             /* borde sutil para separar del page bg */
+}
+
+/* El header sticky de la card con el mismo fondo */
+.px-dashboard .card.card--muted > header{
+  background-color: #F2F4F7 !important;
 }
 
 
@@ -211,7 +236,22 @@ form button:hover { background-color: var(--color-accent); }
 /* Botonera en header (compacta) */
 .session-meta{ margin-left:auto; display:flex; align-items:center; gap:12px; }
 .session-title{ color:#012f6e; font-weight:600; }
-.actions--header .btn{ padding:6px 10px; font-size: var(--fs-base); }
+.actions--header .btn{ padding:8px 14px; font-size: 16 px; }
+
+.app-header .actions{ margin-top: 0 !important; }
+.app-header .actions--header .btn{
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  line-height: 1;
+}
+.app-header .session-title,
+.app-header .session-title span,
+.app-header .patient-phone{
+  font-size: 20px;
+}
 
 /* (Opcional) Acciones al pie si aún las usás en otras vistas */
 .actions.row-end { margin-top: var(--gap); display: flex; justify-content: flex-end; gap: 8px; }
@@ -256,3 +296,92 @@ body.page-simple{
   overflow: auto;
   -webkit-overflow-scrolling: touch; /* suaviza en iOS */
 }
+
+/* Chip de triage: estilo base (global) */
+.app-header .triage-chip{
+  /* variables de color (se pisan con las variantes abajo) */
+  --c-bg: #eef1f5;
+  --c-border: #cfd8dc;
+  --c-text: #1B1E23;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 16px;     /* más grande y legible */
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+
+/* Variantes por nivel (1=verde, 2=amarillo, 3=naranja, 4–5=rojo) */
+.app-header .triage--1{ /* Verde */
+  --c-bg:#e9f7ef; --c-border:#a5d6a7; --c-text:#1b5e20;
+}
+.app-header .triage--2{ /* Amarillo */
+  --c-bg:#fff9e6; --c-border:#ffe082; --c-text:#8d6e00;
+}
+.app-header .triage--3{ /* Naranja */
+  --c-bg:#fff3e0; --c-border:#ffb74d; --c-text:#e65100;
+}
+.app-header .triage--4, .app-header .triage--5{ /* Rojo */
+  --c-bg:#ffebee; --c-border:#ef9a9a; --c-text:#b71c1c;
+}
+.app-header .actions--header .btn{ font-size: 16px !important; }
+
+
+
+/* PRUEBAS PARA MEJORAR LA UI*/
+
+/* ===== Paleta del header (aprox a la imagen) ===== */
+:root{
+  /* Botón CTA verde */
+  --btn-cta-bg: #26A17B;         /* verde */
+  --btn-cta-bg-hover: #1E8767;
+
+  /* Botón outline */
+  --btn-outline-border: #D1D5DB; /* gris claro */
+  --btn-outline-hover: #F9FAFB;
+
+  /* Chip triage (soft red) */
+  --triage-soft-bg: #FDE2E2;     /* rosado claro */
+  --triage-soft-border: #FAD1D1; /* borde rosado */
+  --triage-soft-text: #B91C1C;   /* rojo texto */
+}
+
+/* Botón Continuar (verde) */
+.btn.primary{
+  background: var(--btn-cta-bg) !important;
+  border-color: var(--btn-cta-bg) !important;
+  color: #fff !important;
+}
+.btn.primary:hover{
+  background: var(--btn-cta-bg-hover) !important;
+  border-color: var(--btn-cta-bg-hover) !important;
+}
+
+/* Botón Volver (outline gris) */
+.btn.outline{
+  background: #fff !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--btn-outline-border) !important;
+}
+.btn.outline:hover{
+  background: var(--btn-outline-hover) !important;
+}
+
+/* Chip de triage centrado (soft red) */
+.triage-chip{
+  background: var(--triage-soft-bg) !important;
+  color: var(--triage-soft-text) !important;
+  border: 1px solid var(--triage-soft-border) !important;
+  border-radius: 999px !important;
+  padding: 6px 12px !important;
+  font-weight: 600;
+}
+
+

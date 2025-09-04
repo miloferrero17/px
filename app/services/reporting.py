@@ -75,6 +75,10 @@ def normalize_report_dict(data, schema=SCHEMA_ORDER, defaults=DEFAULTS):
             continue
         v = data.get(key) if isinstance(data, dict) else None
         report[key] = (v if isinstance(v, str) and v.strip() else defaults[key])
+        # Normalización específica
+    if "embarazo" in report:
+        report["embarazo"] = normalize_embarazo(report.get("embarazo"))
+
     return report
 
 def cards_from_report(report, schema=SCHEMA_ORDER):
@@ -146,6 +150,8 @@ def make_final_summary(report_dict: Dict, birth_date: Optional[str], overrides: 
     if overrides:
         for kk, vv in overrides.items():
             out[kk] = (vv or "").strip()
+    if "embarazo" in out:
+        out["embarazo"] = normalize_embarazo(out.get("embarazo"))
     return out
 
 def hash_canonico(obj: Dict) -> str:
@@ -174,6 +180,21 @@ def normalize_associated_symptoms(texto: Optional[str]) -> List[str]:
             seen.add(key)
             clean.append(s)
     return clean
+from typing import Optional
+
+def normalize_embarazo(v: Optional[str]) -> str:
+    """
+    Devuelve 'Si', 'No', 'Desconoce' o '' (vacío) si no reconoce el valor.
+    Maneja acentos, mayúsculas y sinónimos obvios.
+    """
+    s = (v or "").strip().lower()
+    if s in {"si", "sí", "s", "y", "yes", "true", "1"}:
+        return "Si"
+    if s in {"no", "n", "false", "0"}:
+        return "No"
+    if s in {"desconoce", "desconocido", "ns/nc", "nsnc", "n/a", "na"}:
+        return "Desconoce"
+    return ""  # fuerza el placeholder "Seleccionar…"
 
 # --- Signos vitales simplificados: JSON fijo + string legible ---
 
