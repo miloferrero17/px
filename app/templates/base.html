@@ -2,8 +2,16 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1"> {# mejora responsive #}
   <title>{% block title %}Gestión de Consultas{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  {# 1) Estilos globales (legacy). Se pueden anular por página. #}
+  {% block base_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% endblock %}
+
+  {# 2) Estilos adicionales por página (consulta-v2.css u otros) #}
+  {% block page_styles %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
 

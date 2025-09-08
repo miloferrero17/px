@@ -1,0 +1,203 @@
+/* =======================
+   Consulta v2 – Estilos
+   ======================= */
+
+:root{
+  /* Paleta (imagen) */
+  --pc-green: #0FA37F;              /* títulos/íconos */
+  --pc-green-dk: #0B7F62;
+  --pc-bg: #F6FBF9;
+  --pc-surface: #FFFFFF;
+  --pc-border: #E3EEE9;
+  --pc-text: #1B1E23;
+
+  --pc-chip-red-bg: #FDECEC;
+  --pc-chip-red-bd: #F7CACA;
+  --pc-chip-red-tx: #B91C1C;
+
+  --pc-cta: #26A17B;
+  --pc-cta-h: #1E8767;
+  --pc-outline: #D1D5DB;
+  --pc-outline-h: #F9FAFB;
+
+  /* Tipografía y ritmos */
+  --pc-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+             Cantarell, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --pc-fs-1: 12px;
+  --pc-fs-2: 14px;
+  --pc-fs-3: 15px;   /* labels */
+  --pc-fs-4: 18px;   /* títulos card */
+  --pc-fs-5: 20px;   /* header nombre */
+
+  --pc-radius: 12px;
+  --pc-shadow: 0 4px 12px rgba(0,0,0,.06);
+  --pc-gap: 12px;
+  --pc-header-h: 76px;
+}
+
+/* ===== Scope página ===== */
+.page-consulta { font-family: var(--pc-font); color: var(--pc-text); background: var(--pc-bg); }
+@media (min-width:1280px){ html, body { overflow: hidden; } }
+
+/* ===== Header ===== */
+.pc-header{
+  height: var(--pc-header-h);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--pc-gap);
+  padding: 0 16px;
+  background: var(--pc-surface);
+  border-bottom: 1px solid var(--pc-border);
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
+/* fuerza misma fuente en todo el header */
+.pc-header, .pc-header * { font-family: var(--pc-font); }
+
+.pc-h-left{ display:flex; align-items:center; gap:12px; min-width:0; }
+.pc-h-center{ display:flex; justify-content:center; }
+.pc-h-right{ display:flex; justify-content:flex-end; gap:12px; }
+
+.pc-logo{ width:38px; height:38px; flex:0 0 auto; }
+.pc-patient{ display:flex; flex-direction:column; line-height:1.15; }
+.pc-patient__name{ font-size: var(--pc-fs-5); font-weight: 800; }
+.pc-phone{ font-weight:800; font-variant-numeric: tabular-nums; }
+.pc-patient__meta{ font-size: 14px; color: #4b625b; display:flex; gap:8px; align-items:center; }
+.pc-dot{ opacity:.6; }
+
+/* ===== Chip triage ===== */
+.c-chip{
+  display:inline-flex; align-items:center; gap:8px;
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--pc-chip-red-bd);
+  background: var(--pc-chip-red-bg);
+  color: var(--pc-chip-red-tx);
+  font-weight: 700; font-size: var(--pc-fs-3);
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+/* ===== Botones ===== */
+.c-btn{
+  --h: 38px; height: var(--h); padding: 0 16px;
+  border-radius: 999px; border: 1px solid transparent;
+  font-size: var(--pc-fs-3); font-weight: 600; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+  transition: background .15s ease, border-color .15s ease, filter .15s ease;
+}
+.c-btn--primary{ background: var(--pc-cta); color:#fff; border-color: var(--pc-cta); }
+.c-btn--primary:hover{ background: var(--pc-cta-h); border-color: var(--pc-cta-h); }
+.c-btn--outline{ background:#fff; border-color: var(--pc-outline); color: var(--pc-text); }
+.c-btn--outline:hover{ background: var(--pc-outline-h); }
+
+/* ===== Layout contenido ===== */
+.pc-content{
+  height: calc(100vh - var(--pc-header-h));
+  padding: var(--pc-gap);
+  overflow: hidden;              /* evita scroll global */
+}
+.pc-grid{
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr;    /* ← la única fila ocupa todo el alto */
+  gap: var(--pc-gap);
+  min-width: 0;
+}
+.pc-col{
+  min-height: 0; min-width: 0;
+  display: flex; flex-direction: column;
+}
+.pc-col > .c-card{ flex: 1 1 auto; }  /* cada card ocupa toda la columna */
+
+/* ===== Cards ===== */
+.c-card{
+  background: var(--pc-surface);
+  border-radius: var(--pc-radius);
+  border: 1px solid var(--pc-border);
+  box-shadow: var(--pc-shadow);
+  display: flex;               /* header + body en columna */
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;                /* ← llena la celda del grid */
+  overflow-y: auto;            /* ← AHORA scrollea la card completa */
+  overflow-x: hidden;
+}
+
+/* Encabezado de card */
+.c-card__header{
+  position: sticky; top: 0; z-index: 1;
+  display:flex; align-items:center; gap:8px;
+  padding: 12px 12px 10px;
+  background: var(--pc-surface);
+  border-bottom: 1px solid var(--pc-border);
+}
+.c-card__header h2{
+  font-size: var(--pc-fs-4); line-height:1.2;
+  color: var(--pc-green); font-weight: 800;
+}
+.c-ico{ color: var(--pc-green); display:inline-flex; }
+
+/* Cuerpo con scroll vertical interno */
+.c-card__body{
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;              /* ocupa todo el espacio bajo el header */
+  min-height: 0;               /* permite achicarse para que aparezca el scroll de la card */
+  min-width: 0;
+  overflow: visible;           /* sin scroll propio; lo maneja la card */
+}
+
+/* ===== Columna 3: tres filas iguales que llenan la card ===== */
+.pc-grid > .pc-col:nth-child(3) .c-card__body{
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr; /* tres bloques iguales */
+  gap: 12px;
+}
+.pc-grid > .pc-col:nth-child(3) .c-card__body .c-field{
+  min-height: 0;
+  display: flex; flex-direction: column;
+}
+.pc-grid > .pc-col:nth-child(3) .c-card__body .c-input--textarea{
+  flex: 1 1 auto;                  /* hace que cada textarea llene su fila */
+  min-height: 0;                   /* permite que el grid la recorte si hace falta */
+}
+
+/* ===== Form / Inputs ===== */
+.c-field{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.c-label{ font-size: var(--pc-fs-3); line-height:1.25; color:#0a3b2f; }
+
+.c-input{
+  width: 100%; max-width: 100%; min-width: 0;
+  font-family: inherit; font-size: 16px;
+  line-height: 1.35; color: var(--pc-text);
+  background: #fff;
+  border: 1px solid #D9E0E8;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+.c-input::placeholder{ opacity:.5; }
+
+/* Alturas de textarea */
+.c-input--textarea{
+  resize: vertical;
+  min-height: 76px;
+  max-height: none;                /* deja que crezcan si el user las estira */
+}
+
+/* Columna 1: textareas un poco más cortas por defecto */
+.pc-grid > .pc-col:first-child .c-input--textarea{ min-height: 60px; }
+
+/* ===== Responsive ===== */
+@media (max-width:1279px){
+  html, body { overflow:auto; }
+  .pc-grid{ grid-template-columns: 1fr 1fr; }
+}
+@media (max-width:900px){
+  .pc-grid{ grid-template-columns: 1fr; }
+  .pc-patient__name{ font-size: 18px; }
+}
+

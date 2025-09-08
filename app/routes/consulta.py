@@ -207,19 +207,25 @@ def _consulta():
     # 4) Render: seguimos en QA, pero pasamos también "cards" para pintarlas bajo el H1
     encounter_started_at = datetime.now(tz=timezone(timedelta(hours=-3))).isoformat()
 
-    return render_template(
-        "index.html",
-        step="qa",
+    # Elegir template por flag (?v2=1) o config (CONSULTA_V2=True)
+    use_v2 = request.args.get("v2") == "1" or current_app.config.get("CONSULTA_V2", False)
+    tpl = "consulta_v2.html" if use_v2 else "index.html"
+
+    ctx = dict(
+        step="qa",  # tu flujo actual lo sigue necesitando para index.html
         interacciones=interacciones,
         cards=cards,
         telefono=tel,
         txid=txid,
 
-        # usa el HTML como <input type="hidden">
+        # hidden del form
         encounter_started_at=encounter_started_at,
         clinician_name="Virginia Fux",
         clinician_license="MP123",
     )
+
+    return render_template(tpl, **ctx)
+
 
 @bp.route("/consulta", methods=["GET"])
 def index():
@@ -367,9 +373,13 @@ def aceptar():
         "pregnancy_status":      final_summary.get("embarazo"),
         "immunizations_summary": final_summary.get("vacunas"),
 
+        "anamnesis":                 final_summary.get("anamnesis"),
+        "diagnostic_impression":     final_summary.get("impresion_diagnostica"),
+
         # Snapshot + integridad
         "final_summary":   final_summary,
         "content_sha256":  form.get("content_sha256"),
+
     }
 
     repo = PxHceReport()

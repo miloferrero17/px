@@ -128,7 +128,8 @@ UI_KEYS = [
     "dolor","signos_vitales","triage",
     "examen_fisico",
     "antecedentes_personales","antecedentes_familiares","cirugias_previas",
-    "alergias","medicacion_habitual","embarazo","vacunas"
+    "alergias","medicacion_habitual","embarazo","vacunas","anamnesis",
+    "impresion_diagnostica",
 ]
 
 def make_final_summary(report_dict: Dict, birth_date: Optional[str], overrides: Optional[Dict[str, str]] = None) -> Dict:

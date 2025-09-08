@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block main_class %}section--fluid page-consulta{% endblock %}
+{% block title %}Consulta {{ txid }} – {{ telefono }}{% endblock %}
+
+{# ← esto desactiva style.css solo en esta página #}
+{% block base_styles %}{% endblock %}
+
+{# ← y esto carga el CSS nuevo #}
+{% block page_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/consulta-v2.css', v='1') }}">
+{% endblock %}
+
+{# Helper para leer valores de "cards" #}
+{% macro val(k) -%}
+  {%- for c in cards -%}{%- if c.key == k -%}{{ (c.value or '')|trim }}{%- endif -%}{%- endfor -%}
+{%- endmacro %}
+
+{# Header: genero y fecha de nacimiento #}
+{% set ns = namespace(genero='', birth='') %}
+{% for c in cards %}
+  {% if c.key == 'genero' %}{% set ns.genero = (c.value or '')|trim %}{% endif %}
+  {% if c.key in ['fecha_nacimiento','birth_date'] %}{% set ns.birth = (c.value or '')|trim %}{% endif %}
+{% endfor %}
+
+{% block header %}
+<header class="pc-header">
+  <div class="pc-h-left">
+    <img class="pc-logo" alt="Logo" src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png">
+
+    <div class="pc-patient">
+      <div class="pc-patient__name">
+        <strong>Paciente:</strong> <span class="pc-phone">{{ telefono }}</span>
+      </div>
+      <div class="pc-patient__meta">
+        <span><span id="age-text" data-birth="{{ ns.birth|e }}">—</span> años</span>
+        <span class="pc-dot">·</span>
+        <span>{{ ns.genero or "—" }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pc-h-center">
+    <span id="triage-chip" class="c-chip" data-triage="{{ val('triage')|e }}">{{ val('triage') }}</span>
+  </div>
+
+  <div class="pc-h-right">
+    <a class="c-btn c-btn--outline" href="{{ url_for('routes.index', tel=telefono) }}">Volver</a>
+    <button form="consulta-form" type="submit" class="c-btn c-btn--primary">Continuar</button>
+  </div>
+</header>
+{% endblock %}
+
+
+{% block content %}
+<div class="pc-content">
+  <form id="consulta-form" method="post" action="{{ url_for('routes.revisar') }}" novalidate>
+    {{ csrf_token() if csrf_token is defined }}
+    <input type="hidden" name="tel" value="{{ telefono }}">
+    <input type="hidden" name="txid" value="{{ txid }}">
+    <input type="hidden" name="tx_id" value="{{ txid }}">
+    <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at }}">
+    <input type="hidden" name="clinician_name" value="{{ clinician_name or 'Virginia Fux' }}">
+    <input type="hidden" name="clinician_license" value="{{ clinician_license or 'MP123' }}">
+    <input type="hidden" name="fecha_nacimiento" value="{{ ns.birth }}">
+    <input type="hidden" name="genero" value="{{ ns.genero }}">
+
+    <div class="pc-grid">
+    <!-- Col 1 - Información Triage -->
+    <section class="pc-col">
+    <article class="c-card" aria-labelledby="sec-triage">
+        <header class="c-card__header" id="sec-triage">
+        <span class="c-ico" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M3 12h3l2-5 4 10 3-7 2 2h4"
+                    stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </span>
+        <h2>Información Triage</h2>
+        </header>
+
+        <div class="c-card__body">
+        <div class="c-field">
+            <label class="c-label" for="f-motivo"><strong>Motivo de consulta</strong></label>
+            <textarea id="f-motivo" class="c-input c-input--textarea" name="motivo_consulta">{{ val('motivo_consulta') }}</textarea>
+        </div>
+
+        <div class="c-field">
+            <label class="c-label" for="f-sintoma-principal"><strong>Síntoma principal</strong></label>
+            <textarea id="f-sintoma-principal" class="c-input c-input--textarea" name="sintoma_principal">{{ val('sintoma_principal') }}</textarea>
+        </div>
+
+        <div class="c-field">
+            <label class="c-label" for="f-factor"><strong>Factor desencadenante</strong></label>
+            <textarea id="f-factor" class="c-input c-input--textarea" name="factor_desencadenante">{{ val('factor_desencadenante') }}</textarea>
+        </div>
+
+        <div class="c-field">
+            <label class="c-label" for="f-inicio"><strong>Inicio de síntomas</strong></label>
+            <textarea id="f-inicio" class="c-input c-input--textarea" name="inicio">{{ val('inicio') }}</textarea>
+        </div>
+
+        <div class="c-field">
+            <label class="c-label" for="f-med-recibida"><strong>Medicación recibida</strong></label>
+            <textarea id="f-med-recibida" class="c-input c-input--textarea" name="medicacion_recibida">{{ val('medicacion_recibida') }}</textarea>
+        </div>
+        </div>
+    </article>
+    </section>
+
+
+
+      <!-- Col 2 - Historia Clínica -->
+      <section class="pc-col">
+        <article class="c-card" aria-labelledby="sec-historia">
+          <header class="c-card__header" id="sec-historia">
+            <span class="c-ico" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 3h6v3H9V3Z" stroke="currentColor" stroke-width="1.8"/><path d="M7 6h10a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 11h8M8 15h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </span>
+            <h2>Historia Clínica</h2>
+          </header>
+
+          <div class="c-card__body">
+            <div class="c-field">
+              <label class="c-label" for="f-ant-pers"><strong>Antecedentes personales</strong></label>
+              <textarea id="f-ant-pers" class="c-input c-input--textarea" name="antecedentes_personales">{{ val('antecedentes_personales') }}</textarea>
+            </div>
+
+            <div class="c-field">
+              <label class="c-label" for="f-alergias"><strong>Alergias</strong></label>
+              <textarea id="f-alergias" class="c-input c-input--textarea" name="alergias">{{ val('alergias') }}</textarea>
+            </div>
+
+            <div class="c-field">
+              <label class="c-label" for="f-ant-fam"><strong>Antecedentes familiares</strong></label>
+              <textarea id="f-ant-fam" class="c-input c-input--textarea" name="antecedentes_familiares">{{ val('antecedentes_familiares') }}</textarea>
+            </div>
+
+            <div class="c-field">
+              <label class="c-label" for="f-med-hab"><strong>Medicación habitual</strong></label>
+              <textarea id="f-med-hab" class="c-input c-input--textarea" name="medicacion_habitual">{{ val('medicacion_habitual') }}</textarea>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Col 3 - Consulta Actual -->
+      <section class="pc-col">
+        <article class="c-card" aria-labelledby="sec-consulta">
+          <header class="c-card__header" id="sec-consulta">
+            <span class="c-ico" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 3v6a4 4 0 1 0 8 0V3M13 18a4 4 0 0 0 8 0v-3h-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h2>Consulta Actual</h2>
+          </header>
+
+          <div class="c-card__body">
+            <div class="c-field">
+              <label class="c-label" for="f-anamnesis"><strong>Anamnesis</strong></label>
+              <textarea id="f-anamnesis" class="c-input c-input--textarea c-input--grow" name="anamnesis">{{ val('anamnesis') }}</textarea>
+            </div>
+
+            <div class="c-field">
+              <label class="c-label" for="f-examen"><strong>Examen físico</strong></label>
+              <textarea id="f-examen" class="c-input c-input--textarea c-input--grow" name="examen_fisico">{{ val('examen_fisico') }}</textarea>
+            </div>
+
+            <div class="c-field">
+              <label class="c-label" for="f-impresion"><strong>Impresión diagnóstica</strong></label>
+              <textarea id="f-impresion" class="c-input c-input--textarea c-input--grow" name="impresion_diagnostica">{{ val('impresion_diagnostica') }}</textarea>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Edad desde fecha de nacimiento */
+(function(){
+  const el = document.getElementById('age-text');
+  const raw = el?.dataset.birth || '';
+  if (!raw) return;
+  const d = new Date(raw);
+  if (isNaN(d)) return;
+  const t = new Date();
+  let age = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < d.getDate())) age--;
+  el.textContent = age;
+})();
+
+/* Color del chip por nivel (1..5) o por texto */
+(function(){
+  const chip = document.getElementById('triage-chip');
+  if (!chip) return;
+  const raw = (chip.dataset.triage || '').toString().trim().toLowerCase();
+  const mapText = {
+    'muy baja': 1, 'baja': 1,
+    'media': 2, 'moderada': 2, 'intermedia': 2,
+    'alta': 3,
+    'muy alta': 5, 'crítica': 5, 'critica': 5
+  };
+  let lvl = parseInt(raw, 10);
+  if (!(lvl >= 1 && lvl <= 5)) lvl = mapText[raw] || null;
+  if (lvl) chip.classList.add('triage--' + lvl);
+})();
+</script>
+{% endblock %}
