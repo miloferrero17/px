@@ -1,0 +1,468 @@
+/* ========================= PX UI – Unificado (V2) =========================
+   Orden: Tokens → Base → Componentes → Compat Legacy → Layout Consulta → RWD
+=========================================================================== */
+
+/* === Tokens (V2) ========================================================= */
+:root{
+  --pc-green:#0FA37F; --pc-green-dk:#0B7F62;
+  --pc-bg:#F6FBF9; --pc-surface:#FFFFFF; --pc-border:#E3EEE9; --pc-text:#1B1E23;
+
+  --pc-chip-red-bg:#FDECEC; --pc-chip-red-bd:#F7CACA; --pc-chip-red-tx:#B91C1C;
+
+  --pc-cta:#26A17B; --pc-cta-h:#1E8767;
+  --pc-outline:#D1D5DB; --pc-outline-h:#F9FAFB;
+
+  --pc-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,
+            Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+
+  --pc-fs-1:12px; --pc-fs-2:14px; --pc-fs-3:15px; --pc-fs-4:18px; --pc-fs-5:20px;
+
+  --pc-radius:12px; --pc-shadow:0 4px 12px rgba(0,0,0,.06);
+  --pc-gap:12px; --pc-header-h:76px;
+  --pc-col1: 0.80fr;   /* Col 1 un poco más angosta */
+  --pc-col2: 0.80fr;   /* Col 2 un poco más angosta */
+  --pc-col3: 1.40fr;   /* Col 3 un poco más ancha */
+
+  
+
+
+}
+
+/* === Base / Reset ======================================================== */
+*{ box-sizing:border-box; margin:0; padding:0; }
+html, body{ height:100%; }
+body{
+  font-family:var(--pc-font);
+  background:var(--pc-bg);
+  color:var(--pc-text);
+  line-height:1.45;
+}
+
+/* Contenedores genéricos */
+.section{ padding:40px 20px; max-width:800px; margin:0 auto; }
+.section--fluid{ padding:0; max-width:none; margin:0; }
+/* Títulos globales en verde, alineados a la izquierda */
+.section-title{ font-size:1.8rem; color:var(--pc-green); margin:0 0 16px 0; }
+
+/* === Componentes ========================================================= */
+/* Header V2 (+ compat .app-header) */
+/* ===== Header v2 (pantalla de consulta) ===== */
+.pc-header{
+  height:var(--pc-header-h);
+  display:grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items:center;
+  gap:var(--pc-gap);
+  padding:0 16px;
+  background:var(--pc-surface);
+  border-bottom:1px solid var(--pc-border);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.pc-header *{ font-family:var(--pc-font); }
+.pc-header .pc-h-left{ display:flex; align-items:center; gap:12px; min-width:0; }
+.pc-header .pc-h-center{ display:flex; justify-content:center; }
+.pc-header .pc-h-right{ display:flex; justify-content:flex-end; gap:12px; }
+.pc-header .pc-h-center,
+.pc-header .pc-h-right{
+  min-width: 0;   /* habilita truncado dentro de la celda central */
+}
+
+/* ===== Header simple (pantallas 1 y 2) ===== */
+/* ===== Header v2 (pantalla de consulta) ===== */
+.pc-header{
+  height:var(--pc-header-h);
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:var(--pc-gap);
+  padding:0 16px;
+  background:var(--pc-surface);
+  border-bottom:1px solid var(--pc-border);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.pc-header *{ font-family:var(--pc-font); }
+.pc-header .pc-h-left{ display:flex; align-items:center; gap:12px; min-width:0; }
+.pc-header .pc-h-center{ display:flex; justify-content:center; }
+.pc-header .pc-h-right{ display:flex; justify-content:flex-end; gap:12px; }
+
+/* ===== Header simple (pantallas 1 y 2) ===== */
+.app-header{
+  height:var(--pc-header-h);
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;   /* ← título a la izquierda */
+  gap:12px;
+  padding:0 16px;
+  background:var(--pc-surface);
+  border-bottom:1px solid var(--pc-border);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.app-header *{ font-family:var(--pc-font); }
+
+/* estilos comunes que ya usabas */
+.pc-logo,.app-logo{ width:38px; height:38px; flex:0 0 auto; }
+.pc-patient{ display:flex; flex-direction:column; line-height:1.15; }
+.pc-patient__name,.app-title{ font-size:var(--pc-fs-5); font-weight:800; margin:0; color:var(--pc-green); }
+.pc-phone{ font-weight:800; font-variant-numeric:tabular-nums; }
+.pc-patient__meta{ font-size:14px; color:#4b625b; display:flex; gap:8px; align-items:center; }
+.pc-dot{ opacity:.6; }
+
+
+/* Botones (V2) */
+.c-btn{
+  --h:38px; height:var(--h); padding:0 16px;
+  border-radius:999px; border:1px solid transparent;
+  font-size:var(--pc-fs-3); font-weight:600; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+  transition:background .15s ease, border-color .15s ease, filter .15s ease;
+}
+.c-btn--primary{ background:var(--pc-cta); color:#fff; border-color:var(--pc-cta); }
+.c-btn--primary:hover{ background:var(--pc-cta-h); border-color:var(--pc-cta-h); }
+.c-btn--outline{ background:#fff; color:var(--pc-text); border-color:var(--pc-outline); }
+.c-btn--outline:hover{ background:var(--pc-outline-h); }
+
+/* Inputs */
+.c-field{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.c-label{ font-size:var(--pc-fs-3); line-height:1.25; color:#0a3b2f; }
+.c-input{
+  width:100%; max-width:100%; min-width:0;
+  /* densidad controlada por variables, con mismos defaults de hoy */
+  font: 400 var(--in-fs, 16px)/var(--in-lh, 1.35) var(--pc-font);
+  color:var(--pc-text);
+  background:#fff;
+  border:1px solid #D9E0E8;
+  border-radius:12px;
+  padding: var(--in-pad-y, 8px) 10px;
+}
+.c-input::placeholder{ opacity:.55; }
+.c-input--textarea{
+  resize:vertical;
+  min-height: var(--ta-minh, 76px);
+  max-height:none;
+}
+/* Cards */
+.c-card{
+  background:var(--pc-surface);
+  border-radius:var(--pc-radius);
+  border:1px solid var(--pc-border);
+  box-shadow:var(--pc-shadow);
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+}
+.c-card__header{
+  position:sticky; top:0; z-index:2;
+  display:flex; align-items:center; gap:8px;
+  padding:12px 12px 10px;
+  background:var(--pc-surface);
+  border-bottom:1px solid var(--pc-border);
+}
+.c-card__header h2{ font-size:var(--pc-fs-4); line-height:1.2; color:var(--pc-green); font-weight:800; margin:0; }
+.c-ico{ color:var(--pc-green); display:inline-flex; }
+.c-card__body{
+  padding:12px;
+  display:flex; flex-direction:column; gap:var(--field-gap, 10px);
+  flex:1 1 auto; min-width:0; min-height:0;
+}
+
+/* Chip (triage) */
+
+.c-chip{
+  /* variables neutras (fallback) */
+  --chip-bg:#f3f4f6;
+  --chip-bd:#e5e7eb;
+  --chip-tx:#111827;
+
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 12px; border-radius:999px;
+  border:1px solid var(--chip-bd);
+  background:var(--chip-bg);
+  color:var(--chip-tx);
+  font-weight:700; font-size:var(--pc-fs-3);
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+
+
+/* 1 → 🟩 Verde (Muy Baja) */
+.c-chip.triage--1{ --chip-bg:#DCFCE7; --chip-bd:#86EFAC; --chip-tx:#166534; }
+
+/* 2 → 🟨 Amarillo (Baja) */
+.c-chip.triage--2{ --chip-bg:#FEF9C3; --chip-bd:#FDE68A; --chip-tx:#854D0E; }
+
+/* 3 → 🟧 Naranja (Media) */
+.c-chip.triage--3{ --chip-bg:#FFEDD5; --chip-bd:#FDBA74; --chip-tx:#9A3412; }
+
+/* 4 → 🟥 Rojo intenso (Alta) */
+.c-chip.triage--4{ --chip-bg:#FEE2E2; --chip-bd:#FCA5A5; --chip-tx:#991B1B; }
+
+/* 5 → 🟥 Rojo intenso (Muy Alta) — mismo estilo que 4 */
+.c-chip.triage--5{ --chip-bg:#FEE2E2; --chip-bd:#FCA5A5; --chip-tx:#991B1B; }
+
+
+/* Flash */
+.flash-list{ list-style:none; margin:12px auto; padding:0; max-width:900px; }
+.flash-list li{ padding:10px 16px; border-radius:12px; margin-bottom:8px; }
+.flash-list .error{ background:#fdecea; color:#611a15; }
+.flash-list .success{ background:#e6f4ea; color:#1d3c34; }
+
+/* === Compatibilidad Legacy (sin romper vistas existentes) =============== */
+/* Botones legacy: verdes */
+.actions{ display:flex; gap:12px; }
+.btn{
+  padding:10px 16px; border-radius:999px; border:1px solid var(--pc-outline); background:#fff; cursor:pointer;
+  font:600 var(--pc-fs-3)/1 var(--pc-font); color:var(--pc-text);
+}
+.btn.primary{ background:var(--pc-cta); color:#fff; border-color:var(--pc-cta); }
+.btn.primary:hover{ background:var(--pc-cta-h); border-color:var(--pc-cta-h); }
+.btn.outline{ background:#fff; color:var(--pc-text); border-color:var(--pc-outline); }
+.btn.outline:hover{ background:var(--pc-outline-h); }
+
+/* Listas de sesiones: links gris/verde como ahora */
+.session-list{ list-style:none; padding:0; margin-bottom:24px; }
+.session-list li{ padding:12px 16px; border-bottom:1px solid #e0e0e0; }
+.session-list li.open a{ color:var(--pc-green); font-weight:700; text-decoration: underline; }
+.session-list li.closed a{ color:#777; text-decoration: underline; }
+.session-list li a:hover{ filter:brightness(0.95); }
+
+/* Vitals (compat) */
+.vitals-grid{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+.vitals-grid label{ font-size:12px; margin-bottom:2px; color:#555; }
+
+/* === Layout pantalla Consulta (3 columnas, scroll por card) ============= */
+/* Se activa con class `page-consulta` en <main> */
+.section.section--fluid.page-consulta{ padding:0; max-width:none; min-height:0; }
+
+.page-consulta .pc-content{
+  height:calc(100vh - var(--pc-header-h));
+  padding:var(--pc-gap);
+  display:grid;
+  grid-template-rows:minmax(0,1fr);  /* 1 fila = alto disponible */
+  overflow:hidden;                    /* sin scroll global */
+  min-height:0;
+}
+
+.page-consulta .pc-grid{
+  height:100%;
+  display:grid;
+  grid-template-columns:
+    minmax(0, var(--pc-col1, 1fr))
+    minmax(0, var(--pc-col2, 1fr))
+    minmax(0, var(--pc-col3, 1fr));
+  grid-template-rows:minmax(0,1fr);
+  gap:var(--pc-gap);
+  min-width:0; min-height:0;
+}
+
+.page-consulta .pc-col{
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+  overflow:hidden;                    /* la columna no scrollea */
+}
+.page-consulta .pc-col > .c-card{
+  flex:1 1 auto; height:100%;
+  overflow-y:auto; overflow-x:hidden; /* la card es el scroller */
+  -webkit-overflow-scrolling:touch;
+}
+
+
+
+/* ===== Pantalla: ingresar teléfono ===== */
+.phone-lookup{
+  padding: 48px 16px;
+  display: flex;
+  justify-content: center;      /* centra el bloque, NO el texto */
+}
+.phone-lookup__inner{
+  width: min(520px, 92%);        /* ancho cómodo en desktop y mobile */
+}
+
+/* Usá label como título para alinear perfecto con el input */
+.form-title{
+  display:block;
+  color: var(--pc-green);
+  font-weight: 800;
+  font-size: 22px;               /* chico y consistente */
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+
+.form-stack{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Input cómodo, bordes suaves, no gigante */
+.c-input--big{
+  padding: 12px 14px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+.is-compact{
+  --in-pad-y: 6px;         /* padding vertical más bajo */
+  --ta-minh: 56px;         /* textareas más cortas */
+  --field-gap: 8px;        /* menos espacio entre campos */
+  /* opcionales:
+  --in-fs: 15px;
+  --in-lh: 1.30;
+  */
+}
+
+
+
+/* Botón verde debajo, un poco más chico que el input */
+.phone-submit{
+  height: 38px;
+  align-self: flex-start;         /* queda alineado con el campo */
+}
+
+.is-fill-3{
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap, 10px);
+  min-height: 0; /* permite que la card scrollee si hace falta */
+}
+
+.is-fill-3 .c-field{
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* comportamiento “libre” por defecto en mobile/tablet */
+  flex: initial;
+  min-height: var(--ta-minh, 76px);
+}
+
+.is-fill-3 .c-input--textarea{
+  /* altura natural + asa de resize siempre disponible (pedido #7) */
+  flex: initial;
+  height: auto;
+  min-height: var(--ta-minh, 76px);
+  resize: vertical;
+}
+
+/* === is-fill-3: sólo en desktop (≥1280px) llenan la 3ª columna ========= */
+@media (min-width:1280px){
+  .is-fill-3 .c-field{
+    flex: 1 1 0;                 /* cada bloque ocupa ~1/3 */
+    gap: var(--field-gap, 10px); /* asegura espacio entre label y textarea */
+  }
+  .is-fill-3 .c-input--textarea{
+    flex: 1 1 auto;              /* ocupa el espacio restante bajo el label */
+    height: auto;                 /* NO 100%: así no pisa el label */
+    min-height: var(--ta-minh, 76px);
+    resize: vertical;             /* el asa sigue funcionando */
+    overflow: auto;
+  }
+}
+
+/* === Responsive ========================================================= */
+@media (max-width:1279px){
+  html,body{ overflow:auto; }
+  .page-consulta .pc-grid{ grid-template-columns:1fr 1fr; }
+  .page-consulta .pc-content{
+    overflow: auto;                 /* antes hidden */
+    height: auto;                   /* deja crecer */
+    min-height: calc(100vh - var(--pc-header-h));
+  }
+  .page-consulta .pc-col > .c-card{
+    height: auto;
+    overflow: visible;
+  }
+  .is-fill-3 .c-field{ flex: initial; }
+  .is-fill-3 .c-input--textarea{
+    flex: initial;
+    height: auto;
+  }
+
+}
+@media (max-width:900px){
+  .page-consulta .pc-grid{ grid-template-columns:1fr; }
+  .pc-patient__name,.app-title{ font-size:18px; }
+}
+
+@media (max-width:900px){
+  .page-consulta .pc-grid{ grid-template-columns:1fr; }
+  .pc-patient__name,.app-title{ font-size:18px; }
+
+  .pc-header{
+    height: auto;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "left right"
+      "center center";
+    row-gap: 8px;
+    padding: 8px 12px;
+  }
+  .pc-header .pc-h-left{  grid-area: left; }
+  .pc-header .pc-h-right{ grid-area: right; justify-content:flex-end; }
+  .pc-header .pc-h-center{grid-area: center; justify-content:center; min-width:0; }
+
+  #triage-chip{
+    max-width: 90vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    padding: 4px 10px;
+  }
+}
+
+/* === Pantalla: Revisión de la consulta ================================== */
+/* No sobrescribe reglas existentes: solo define clases nuevas usadas por review.html */
+
+.review-wrap{
+  max-width: min(900px, 92vw);
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+/* Tarjeta simple basada en tokens del sistema */
+.card{
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius);
+  box-shadow: var(--pc-shadow);
+  padding: 16px;
+}
+.card h2{
+  margin: 0 0 10px 0;
+  color: var(--pc-green);
+  font-size: var(--pc-fs-4);
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+/* Bloque JSON: legible, scrolleable y sin romper layout */
+pre.json{
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--pc-radius);
+  padding: 12px;
+  overflow: auto;
+  max-height: clamp(220px, 50vh, 640px);
+  -webkit-overflow-scrolling: touch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+               "Liberation Mono", "Courier New", monospace;
+  font-size: var(--pc-fs-2);
+  line-height: 1.45;
+}
+
+/* Accesibilidad: foco visible solo dentro de la pantalla de revisión */
+.review-wrap .btn:focus-visible{
+  outline: 2px solid var(--pc-green);
+  outline-offset: 2px;
+}
+
+/* Responsive suave */
+@media (max-width: 600px){
+  .card{ padding: 12px; }
+}
+
+/* Impresión: limpia para archivar en HC */
+@media print{
+  body{ background: #fff; }
+  .pc-header, .app-header{ display: none !important; }
+  .review-wrap{ max-width: 100%; margin: 0; padding: 0; }
+  .card{ border: none; box-shadow: none; }
+  .actions{ display: none; }
+  pre.json{ max-height: none; overflow: visible; }
+}

@@ -1,12 +1,23 @@
 {% extends "base.html" %}
-{% block body_class %}page-simple{% endblock %}
-
-{% block title %}Gestión de Consultas – Ingresar teléfono{% endblock %}
+{% block title %}Gestión de Consultas{% endblock %}
 
 {% block content %}
-  <h1 class="section-title">Ingresá el teléfono</h1>
-  <form method="get" action="{{ url_for('routes.index') }}">
-    <input type="text" name="tel" placeholder="Ej. 5491123456789" required>
-    <button type="submit">Consultar</button>
-  </form>
+<section class="phone-lookup">
+  <div class="phone-lookup__inner">
+    <form class="form-stack" method="get" action="{{ url_for('routes.index') }}">
+      <label for="tel" class="form-title">Ingresá el teléfono</label>
+      <input
+        id="tel"
+        class="c-input c-input--big"
+        type="tel"
+        name="tel"
+        placeholder="Ej. 5491123456789"
+        inputmode="numeric"
+        autocomplete="tel"
+      >
+      <button type="submit" class="c-btn c-btn--primary phone-submit">Consultar</button>
+    </form>
+  </div>
+</section>
 {% endblock %}
+

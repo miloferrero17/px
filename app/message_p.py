@@ -2,13 +2,13 @@
 
 # Módulos Build-in
 from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo  # Python 3.9+
-from typing import Optional
-import json
-from dateutil.parser import isoparse
-import requests
-import time
 import os
+import json
+#from zoneinfo import ZoneInfo  # Python 3.9+
+#from typing import Optional
+#from dateutil.parser import isoparse
+#import requests
+
 
 
 # Módulos de 3eros
@@ -18,8 +18,8 @@ from twilio.twiml.messaging_response import MessagingResponse
 # Módulos propios
 from app.Model.users import Users   
 from app.Model.enums import Role
-from app.Model.contacts import Contacts
 from app.Model.engine import Engine
+from app.Model.contacts import Contacts
 from app.Model.messages import Messages
 from app.Model.transactions import Transactions
 from app.Model.questions import Questions
@@ -62,16 +62,10 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     WELCOME_MSG = (
         "👋 Hola, soy el asistente de PX Salud.\n"
-        "Antes de continuar necesitamos tu consentimiento según la Ley 25.326.\n\n"
-        "👉 Información clave:\n"
-        " • Responsable: PX Salud S.A.\n"
-        " • Finalidad: orientarte sobre tu estado de salud.\n"
-        " • Datos: algunos son obligatorios (DNI, credencial, síntomas).\n"
-        " • Destino: sólo profesionales de salud autorizados.\n"
-        " • Derechos: podés pedir acceso, corrección o borrado en cualquier momento.\n\n"
-        "✅ Si estás de acuerdo respondé 'Acepto'.\n"
-        "❌ Si no, cerrá este chat y no guardaremos tus datos.\n"
+        "Para empezar necesito verificar tu identidad.\n\n"
+        "✍️ Por favor, escribí el DNI (sólo números) de la persona que necesita atención médica."
     )
+
 
     tx = Transactions()
     ev = Events()
@@ -132,7 +126,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
         # Guardar el WELCOME (no el placeholder) en messages
         try:
-            nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 204
+            nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
             msj.add(
                 msg_key=nodo_inicio,
                 text=WELCOME_MSG,  # <-- acá va el welcome real
@@ -142,7 +136,6 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
         except Exception as e:
             print(f"[WELCOME GUARD] error guardando WELCOME en messages: {e}")
 
-        # Enviar bienvenida y cortar: usuario deberá escribir "Acepto" luego
         return "Ok"
 
     # 3) Gestionar sesión y registrar mensaje (ya sabemos que no corresponde WELCOME)
@@ -162,7 +155,10 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
                 "content": f"[Adjunto {adj_kind}] {adj_summary}"
             })
             conversation_str = json.dumps(conversation_history)
+            if adj_kind == "audio":
+                twilio.send_whatsapp_message("✅ Recibí tu audio, lo transcribo…", to, None)
 
+            
     # 5) Ejecutar workflow
     variables = inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history)
     variables = ejecutar_workflow(variables)
@@ -240,7 +236,7 @@ def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcri
     if media_type and media_type.startswith("audio"):
         summary = transcription or "Audio recibido."
         #twilio.send_whatsapp_message("Estoy analizando tu audio", to, None)
-        twilio.send_whatsapp_message(summary, to, None)
+        #twilio.send_whatsapp_message(summary, to, None)
         return True, summary, "audio"
 
     # Otros tipos: no responde
@@ -276,7 +272,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     # Nodo inicial del evento (el TTL ahora se controla arriba, antes del WELCOME)
-    nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 204
+    nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
 
     # Contexto base para sembrar la sesión (sin historial previo)
     contexto_agente = ev.get_description_by_event_id(event_id) or ""
@@ -384,8 +380,9 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     tx, now_utc = Transactions(), datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     # Enviar respuesta
-    mensaje_a_enviar = variables.get("response_text") or "Hubo un problema interno. Intenta más tarde."
-    twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
+    mensaje_a_enviar = variables.get("response_text")
+    if mensaje_a_enviar:
+        twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
 
     # AÑADIR respuesta del asistente al historial ANTES de persistir
     ch = variables.get("conversation_history", [])

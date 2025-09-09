@@ -2,55 +2,52 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Revisión de consulta</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <style>
-    .review-wrap{max-width:900px;margin:24px auto;padding:0 16px}
-    .card{background:#fff;border:1px solid #e6eaf0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.06);padding:16px}
-    .card h2{margin:0 0 10px 0;color:#005AAC;font-size:1.25rem}
-    pre.json{background:#f6f8fa;border-radius:10px;padding:12px;overflow:auto}
-    .actions{display:flex;gap:12px;margin-top:16px}
-    .btn{padding:10px 16px;border-radius:10px;border:1px solid #d9e0e8;background:#fff;cursor:pointer}
-    .btn.primary{background:#005AAC;color:#fff;border-color:#005AAC}
-    .btn:hover{filter:brightness(0.98)}
-    .btn.primary:hover{background:#00C2F3;border-color:#00C2F3}
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app-ui.css') }}">
 </head>
 <body>
-  <div class="review-wrap">
-    <h1>Revisión de la consulta</h1>
+  <header class="app-header" role="banner" aria-label="Barra superior">
+    <img
+      class="pc-logo"
+      src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
+      alt="PX"
+      width="38" height="38"
+      decoding="async"
+      fetchpriority="high">
+    <h1 class="app-title">Revisión de la consulta</h1>
+  </header>
 
-    <div class="card">
-      <h2>Resumen final</h2>
-      <pre class="json">{{ final_summary | tojson(indent=2) }}</pre>
+  <main class="review-wrap" role="main">
+    <section class="card" aria-labelledby="resumen-final">
+      <h2 id="resumen-final">Resumen final</h2>
+      <pre class="json" aria-label="JSON del resumen final">{{ final_summary | tojson(indent=2) }}</pre>
       <p><strong>Hash del contenido:</strong> {{ content_sha256 }}</p>
-    </div>
+    </section>
 
     <!-- Formulario para confirmar y guardar -->
     <form method="post" action="{{ url_for('routes.aceptar') }}" class="actions">
       {{ csrf_token() if csrf_token is defined }}
 
       <!-- Identificación / trazabilidad -->
-      <input type="hidden" name="tx_id" value="{{ tx_id }}">
-      <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at }}">
-      <input type="hidden" name="clinician_name" value="{{ clinician_name }}">
-      <input type="hidden" name="clinician_license" value="{{ clinician_license }}">
-      {% if patient_dni %}<input type="hidden" name="patient_dni" value="{{ patient_dni }}">{% endif %}
+      <input type="hidden" name="tx_id" value="{{ tx_id | e }}">
+      <input type="hidden" name="encounter_started_at" value="{{ encounter_started_at | e }}">
+      <input type="hidden" name="clinician_name" value="{{ clinician_name | e }}">
+      <input type="hidden" name="clinician_license" value="{{ clinician_license | e }}">
+      {% if patient_dni %}<input type="hidden" name="patient_dni" value="{{ patient_dni | e }}">{% endif %}
 
       <!-- Snapshot e integridad -->
-      <input type="hidden" name="content_sha256" value="{{ content_sha256 }}">
-      <input type="hidden" name="vitals_json" value='{{ vitals | tojson }}'>
+      <input type="hidden" name="content_sha256" value="{{ content_sha256 | e }}">
       <input type="hidden" name="associated_json" value='{{ assoc_list | tojson }}'>
 
-      <!-- Campos de la UI: reenviamos todo el resumen como pares k/v -->
-      {% for k, v in final_summary.items() %}
-        <input type="hidden" name="{{ k }}" value="{{ v }}">
-      {% endfor %}
+      <input type="hidden" name="final_summary_json" value='{{ final_summary | tojson }}'>
+
 
       <!-- Botones -->
-      <button type="button" class="btn primary" onclick="history.back()">← Volver a editar</button>
+      <button type="button" class="btn" onclick="history.back()">← Volver a editar</button>
       <button type="submit" class="btn primary">Aceptar y guardar</button>
     </form>
-  </div>
+  </main>
 </body>
 </html>
+

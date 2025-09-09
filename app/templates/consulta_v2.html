@@ -1,14 +1,9 @@
 {% extends "base.html" %}
-{% block main_class %}section--fluid page-consulta{% endblock %}
+
 {% block title %}Consulta {{ txid }} – {{ telefono }}{% endblock %}
 
-{# ← esto desactiva style.css solo en esta página #}
-{% block base_styles %}{% endblock %}
-
-{# ← y esto carga el CSS nuevo #}
-{% block page_styles %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/consulta-v2.css', v='1') }}">
-{% endblock %}
+{# Importante: este block solo una vez #}
+{% block main_class %}section--fluid page-consulta{% endblock %}
 
 {# Helper para leer valores de "cards" #}
 {% macro val(k) -%}
@@ -21,6 +16,7 @@
   {% if c.key == 'genero' %}{% set ns.genero = (c.value or '')|trim %}{% endif %}
   {% if c.key in ['fecha_nacimiento','birth_date'] %}{% set ns.birth = (c.value or '')|trim %}{% endif %}
 {% endfor %}
+
 
 {% block header %}
 <header class="pc-header">
@@ -79,7 +75,7 @@
         <h2>Información Triage</h2>
         </header>
 
-        <div class="c-card__body">
+        <div class="c-card__body is-compact">
         <div class="c-field">
             <label class="c-label" for="f-motivo"><strong>Motivo de consulta</strong></label>
             <textarea id="f-motivo" class="c-input c-input--textarea" name="motivo_consulta">{{ val('motivo_consulta') }}</textarea>
@@ -154,7 +150,7 @@
             <h2>Consulta Actual</h2>
           </header>
 
-          <div class="c-card__body">
+          <div class="c-card__body is-fill-3">
             <div class="c-field">
               <label class="c-label" for="f-anamnesis"><strong>Anamnesis</strong></label>
               <textarea id="f-anamnesis" class="c-input c-input--textarea c-input--grow" name="anamnesis">{{ val('anamnesis') }}</textarea>
@@ -194,19 +190,43 @@
 })();
 
 /* Color del chip por nivel (1..5) o por texto */
-(function(){
+(function () {
   const chip = document.getElementById('triage-chip');
   if (!chip) return;
-  const raw = (chip.dataset.triage || '').toString().trim().toLowerCase();
-  const mapText = {
-    'muy baja': 1, 'baja': 1,
-    'media': 2, 'moderada': 2, 'intermedia': 2,
-    'alta': 3,
-    'muy alta': 5, 'crítica': 5, 'critica': 5
-  };
-  let lvl = parseInt(raw, 10);
-  if (!(lvl >= 1 && lvl <= 5)) lvl = mapText[raw] || null;
-  if (lvl) chip.classList.add('triage--' + lvl);
+
+  // Puede venir "1 → Urgencia Estimada Muy Baja", "Urgencia Estimada Alta" o "(Nivel ESI: 4)"
+  const raw = (chip.dataset.triage || chip.textContent || '').toString().trim();
+  const s = raw.toLowerCase();
+  let lvl = null;
+
+  // 1) Detectar "Nivel ESI: n"
+  let m = s.match(/nivel\s*esi\s*[:\-]?\s*([1-5])/i);
+  if (m) lvl = parseInt(m[1], 10);
+
+  // 2) Detectar número 1..5 en cualquier parte
+  if (lvl == null) {
+    m = s.match(/\b([1-5])\b/);
+    if (m) lvl = parseInt(m[1], 10);
+  }
+
+  // 3) Detectar por texto
+  if (lvl == null) {
+    if (s.includes('muy alta')) lvl = 5;
+    else if (/\balta\b/.test(s)) lvl = 4;
+    else if (/\bmedia\b/.test(s)) lvl = 3;
+    else if (s.includes('muy baja')) lvl = 1;
+    else if (/\bbaja\b/.test(s)) lvl = 2;
+  }
+
+  // Pintar
+  chip.classList.remove('triage--1','triage--2','triage--3','triage--4','triage--5');
+  if (lvl >= 1 && lvl <= 5) {
+    chip.classList.add('triage--' + lvl); // 1=verde, 2=amarillo, 3=naranja, 4=rojo, 5=rojo (intenso)
+
+    chip.setAttribute('data-level', String(lvl));
+  } else {
+    chip.setAttribute('data-level', '');
+  }
 })();
 </script>
 {% endblock %}

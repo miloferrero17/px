@@ -1,7 +1,6 @@
 import flask
 from flask import request, current_app, render_template, flash
 import json
-from datetime import timedelta
 from dateutil.parser import isoparse
 
 import app.services.brain as brain
@@ -10,12 +9,12 @@ from app.Model.contacts import Contacts
 from app.Model.events import Events
 
 from app.routes import routes as bp # usamos el mismo blueprint "routes"
-import json
 import re
 from app.services import reporting
 
 from datetime import datetime, timezone, timedelta
 
+from app.Model.px_hce_report import PxHceReport
 
 
 def parse_report_lines(text: str):
@@ -152,26 +151,9 @@ def _consulta():
 
 
     # 3.4 Mostrar Q/A de la transacción
-    '''
-    ev = Events()
-    contexto_copilot = ev.get_assistant_by_event_id(1)
-    conversation_history = [{"role": "system", "content": contexto_copilot}]
 
-    convo_str = Transactions().get_conversation_by_id(txid) or "[]"
-    conversation_history.append({"role": "assistant", "content": convo_str})
 
-    convo_str = brain.ask_openai(conversation_history)
-    try:
-        parsed = json.loads(convo_str)
-    except json.JSONDecodeError:
-        current_app.logger.warning(f"JSON inválido desde OpenAI, uso texto plano: {convo_str!r}")
-        parsed = convo_str
 
-    messages = _normalize_messages(parsed)
-    interacciones = [m for m in messages if m.get("role") in ("assistant", "user")]
-
-    return render_template("index.html", step="qa", interacciones=interacciones, telefono=tel, txid=txid)
-'''
     ev = Events()
     contexto_copilot = ev.get_assistant_by_event_id(1)  # prompt en Supabase que exige JSON
 
@@ -207,24 +189,19 @@ def _consulta():
     # 4) Render: seguimos en QA, pero pasamos también "cards" para pintarlas bajo el H1
     encounter_started_at = datetime.now(tz=timezone(timedelta(hours=-3))).isoformat()
 
-    # Elegir template por flag (?v2=1) o config (CONSULTA_V2=True)
-    use_v2 = request.args.get("v2") == "1" or current_app.config.get("CONSULTA_V2", False)
-    tpl = "consulta_v2.html" if use_v2 else "index.html"
-
-    ctx = dict(
-        step="qa",  # tu flujo actual lo sigue necesitando para index.html
+    # Siempre plantilla nueva (3 columnas, estilos unificados)
+    return render_template(
+        "consulta_v2.html",
+        # si no usás "interacciones" en v2 podés quitarlo, no estorba
         interacciones=interacciones,
         cards=cards,
         telefono=tel,
         txid=txid,
-
-        # hidden del form
         encounter_started_at=encounter_started_at,
         clinician_name="Virginia Fux",
         clinician_license="MP123",
     )
 
-    return render_template(tpl, **ctx)
 
 
 @bp.route("/consulta", methods=["GET"])
@@ -234,7 +211,6 @@ def index():
 @bp.route("/consulta", methods=["POST"])
 def feedback():
     return _consulta()
-
 
 def _normalize_messages(raw):
     """Devuelve list[{'role':..,'content':..}] a partir de distintos formatos."""
@@ -274,116 +250,114 @@ def revisar():
     # 1) Reconstruir dict “tal cual UI” (solo claves de la UI)
     report_dict = {k: form.get(k, "") for k in reporting.UI_KEYS}
 
-    # 2) Signos vitales estructurados (desde los 6 inputs)
-    vitals = reporting.build_vitals_dict(
-        temp_c=form.get("temp_c"),
-        bp_sys=form.get("bp_sys"),
-        bp_dia=form.get("bp_dia"),
-        fc_bpm=form.get("fc_bpm"),
-        fr_rpm=form.get("fr_rpm"),
-        spo2_pct=form.get("spo2_pct"),
-    )
-    sv_text = reporting.format_vitals_text(vitals)
-
-    # 3) Síntomas asociados como lista normalizada
+    # 2) Síntomas asociados como lista normalizada
     assoc_list = reporting.normalize_associated_symptoms(form.get("sintomas_asociados"))
 
-    # 4) Snapshot final + hash canónico
+    # 3) Snapshot final + hash canónico (SIN signos vitales, sin overrides)
     birth_date = form.get("fecha_nacimiento") or form.get("birth_date")
-    final_summary = reporting.make_final_summary(
-        report_dict,
-        birth_date,
-        overrides={"signos_vitales": sv_text},
-    )
+    final_summary = reporting.make_final_summary(report_dict, birth_date)
     content_sha256 = reporting.hash_canonico(final_summary)
 
-    # 5) Render de la pantalla de revisión (AÚN NO guardamos)
+    # 4) Render de la pantalla de revisión (AÚN NO guardamos)
     return render_template(
         "review.html",
         tx_id=form.get("tx_id"),
         encounter_started_at=form.get("encounter_started_at"),
         clinician_name=form.get("clinician_name"),
         clinician_license=form.get("clinician_license"),
+        patient_dni=form.get("patient_dni"),
         final_summary=final_summary,
         content_sha256=content_sha256,
-        vitals=vitals,
         assoc_list=assoc_list,
     )
-
-from app.Model.px_hce_report import PxHceReport
-from app.services import reporting
 @bp.post("/consulta/aceptar")
 def aceptar():
     form = request.form
 
-    # 1) Datos base
+    # Base
     now_ar = datetime.now(tz=timezone(timedelta(hours=-3))).isoformat()
     tx_id = int(form.get("tx_id"))
 
-    # 2) Reconstrucción de estructuras
-    final_summary = {k: form.get(k) for k in reporting.UI_KEYS if form.get(k) is not None}
-    vitals = json.loads(form.get("vitals_json") or "{}")
-    assoc_list = json.loads(form.get("associated_json") or "[]")
+    # JSONs del form
+    try:
+        final_summary = json.loads(form.get("final_summary_json") or "{}")
+    except Exception:
+        final_summary = {}
 
-    # 3) Dolor: número → pain_scale; texto → pain_text
+    try:
+        assoc_list = json.loads(form.get("associated_json") or "[]")
+    except Exception:
+        assoc_list = []
+
+    # Normalizaciones
+    def _parse_date(s):
+        if not s: return None
+        try:
+            # devuelve 'YYYY-MM-DD' para columna date
+            return isoparse(s).date().isoformat()
+        except Exception:
+            return None
+
     dolor_raw = (final_summary.get("dolor") or "").strip()
     pain_scale = int(dolor_raw) if dolor_raw.isdigit() else None
-    pain_text = None if pain_scale is not None else (dolor_raw or None)
+    pain_text  = None if pain_scale is not None else (dolor_raw or None)
 
-    # 4) Mapeo UI → columnas de px_hce_report
+    genero = final_summary.get("genero") or None
+    if genero not in ("Mujer","Hombre","Otro"):
+        genero = None
+
+    embarazo = reporting.normalize_embarazo(final_summary.get("embarazo"))
+
+    # Mapeo explícito a columnas existentes en tu tabla
     row = {
-        # Identificación / trazabilidad
-        "contact_id": None,                     # si aún no lo tenés, dejalo NULL
+        # Identificación / encuentro / profesional
         "tx_id": tx_id,
-
-        # Paciente
-        "patient_dni": form.get("patient_dni") or final_summary.get("patient_dni"),
-        "birth_date":  final_summary.get("fecha_nacimiento") or None,
-        "genero":      final_summary.get("genero") or None,
-
-        # Encuentro
-        "encounter_class": "emergency",
         "encounter_started_at": form.get("encounter_started_at") or now_ar,
         "encounter_ended_at": now_ar,
-
-        # Profesional
-        "clinician_name":   form.get("clinician_name") or "Virginia Fux",
+        "clinician_name":    form.get("clinician_name") or "Virginia Fux",
         "clinician_license": form.get("clinician_license") or "MP123",
 
-        # Núcleo clínico
-        "chief_complaint":     final_summary.get("motivo_consulta"),
-        "main_symptom":        final_summary.get("sintoma_principal"),
-        "associated_symptoms": assoc_list,
-        "trigger_factor":      final_summary.get("factor_desencadenante"),
-        "onset_text":          final_summary.get("inicio"),
-        "evolucion":           final_summary.get("evolucion"),
-        "meds_taken_prior":    final_summary.get("medicacion_recibida"),
+        # Paciente
+        "patient_dni": form.get("patient_dni"),
+        "birth_date":  _parse_date(final_summary.get("fecha_nacimiento")),
+        "genero":      genero,
+
+        # Núcleo clínico (columnas en inglés de tu tabla)
+        "chief_complaint":     final_summary.get("motivo_consulta") or None,
+        "main_symptom":        final_summary.get("sintoma_principal") or None,
+        "associated_symptoms": assoc_list,  # jsonb
+        "trigger_factor":      final_summary.get("factor_desencadenante") or None,
+        "onset_text":          final_summary.get("inicio") or None,
+        "evolucion":           final_summary.get("evolucion") or None,
+        "meds_taken_prior":    final_summary.get("medicacion_recibida") or None,
         "pain_scale":          pain_scale,
         "pain_text":           pain_text,
-        "vitals":              vitals,
-        "triage_text":         final_summary.get("triage"),
-        "physical_exam":       final_summary.get("examen_fisico"),
+        "triage_text":         final_summary.get("triage") or None,
+        "physical_exam":       final_summary.get("examen_fisico") or None,
 
         # Antecedentes
-        "personal_history":      final_summary.get("antecedentes_personales"),
-        "family_history":        final_summary.get("antecedentes_familiares"),
-        "surgeries":             final_summary.get("cirugias_previas"),
-        "allergies":             final_summary.get("alergias"),
-        "current_medication":    final_summary.get("medicacion_habitual"),
-        "pregnancy_status":      final_summary.get("embarazo"),
-        "immunizations_summary": final_summary.get("vacunas"),
+        "personal_history":      final_summary.get("antecedentes_personales") or None,
+        "family_history":        final_summary.get("antecedentes_familiares") or None,
+        "surgeries":             final_summary.get("cirugias_previas") or None,
+        "allergies":             final_summary.get("alergias") or None,
+        "current_medication":    final_summary.get("medicacion_habitual") or None,
+        "pregnancy_status":      embarazo or None,
+        "immunizations_summary": final_summary.get("vacunas") or None,
 
-        "anamnesis":                 final_summary.get("anamnesis"),
-        "diagnostic_impression":     final_summary.get("impresion_diagnostica"),
+        # Campos nuevos en español
+        "anamnesis":             final_summary.get("anamnesis") or None,
+        "impresion_diagnostica": final_summary.get("impresion_diagnostica") or None,
 
-        # Snapshot + integridad
-        "final_summary":   final_summary,
-        "content_sha256":  form.get("content_sha256"),
-
+        # Snapshots / integridad
+        "final_summary": final_summary,      # jsonb (tu columna se llama así)
+        "content_sha256": form.get("content_sha256"),
     }
 
+    # Limpia None/""/[] si tu modelo no los tolera
+    row = {k: v for k, v in row.items() if v not in (None, "", [])}
+
     repo = PxHceReport()
-    saved = repo.upsert_by_tx(row)  # upsert por tx_id
+    saved = repo.upsert_by_tx(row)
 
     flash("Consulta guardada correctamente.", "success")
     return render_template(

@@ -11,7 +11,8 @@ class Contacts(BaseModel):
             "contact_id": Field(None, DataType.INTEGER, False, True),  # ✅ nueva PK
             "event_id": Field(None, DataType.INTEGER, False, False),
             "name": Field(None, DataType.STRING, False, False),
-            "phone": Field(None, DataType.PHONE, False, False)
+            "phone": Field(None, DataType.PHONE, False, False),
+            "dni":   Field(None, DataType.STRING, False, False),
         }
         super().__init__("contacts", data)
         self.__data = data  # opcional, por si necesitás usarlo luego
@@ -74,7 +75,7 @@ class Contacts(BaseModel):
         except Exception as e:
             raise DatabaseError(f"Error en get_by_phone: {e}")
 
-    def update(self, contact_id: int, event_id: Optional[int] = None, name: Optional[str] = None, phone: Optional[str] = None) -> None:
+    def update(self, contact_id: int, event_id: Optional[int] = None, name: Optional[str] = None, phone: Optional[str] = None,dni: Optional[str] = None ) -> None:
         """
         Actualiza un contacto por contact_id.
         """
@@ -82,6 +83,7 @@ class Contacts(BaseModel):
         self.__data["event_id"].value = event_id
         self.__data["name"].value = name
         self.__data["phone"].value = phone
+        self.__data["dni"].value = dni
         try:
             super().update("contact_id", contact_id)
         except Exception as e:
@@ -117,6 +119,31 @@ class Contacts(BaseModel):
             return registro["event_id"] if isinstance(registro, dict) else registro.event_id
         except Exception as e:
             raise DatabaseError(f"Error en get_event_id_by_phone: {e}")
+    
+    def set_dni(self, contact_id: int, dni: str) -> None:
+        """
+        Actualiza sólo el campo DNI del contacto.
+        """
+        # limpiamos el resto para que update no los sobreescriba accidentalmente
+        self.__data["contact_id"].value = contact_id
+        self.__data["event_id"].value = None
+        self.__data["name"].value = None
+        self.__data["phone"].value = None
+        self.__data["dni"].value = dni
+        try:
+            super().update("contact_id", contact_id)
+        except Exception as e:
+            raise DatabaseError(f"Error en set_dni: {e}")
+    def get_by_dni(self, dni: str) -> Optional[ContactsRegister]:
+        try:
+            result = super().get("dni", dni)
+            if not result:
+                return None
+            return ContactsRegister(**result[0]) if isinstance(result[0], dict) else result[0]
+        except Exception as e:
+            raise DatabaseError(f"Error en get_by_dni: {e}")
+
+
 
 '''
 ctt = Contacts()

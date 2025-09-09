@@ -2,15 +2,32 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Guardado</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app-ui.css') }}">
 </head>
 <body>
-  <div class="review-wrap" style="max-width:900px;margin:24px auto;padding:0 16px">
-    <h1>¡Guardado!</h1>
-    <p>ID de reporte: <strong>{{ report_id }}</strong></p>
-    <p>Transacción (tx): <strong>{{ tx_id }}</strong></p>
-    <p><a class="btn" href="{{ url_for('routes.index') }}">Volver</a></p>
-  </div>
+  <!-- Header consistente -->
+  <header class="app-header" role="banner" aria-label="Barra superior">
+    <img
+      class="pc-logo"
+      src="https://mi-bucket-milito.s3.us-east-1.amazonaws.com/Captura+de+pantalla+2025-07-19+a+la(s)+10.57.00%E2%80%AFp.%C2%A0m..png"
+      alt="PX" width="38" height="38" decoding="async" fetchpriority="high">
+    <!-- Usamos un único h1 en la página -->
+    <h1 class="app-title">Revisión de la consulta</h1>
+    <!-- Si preferís que el header diga “Guardado”, cambiá la línea de arriba -->
+  </header>
+
+  <main class="review-wrap" role="main">
+    <section class="card" aria-labelledby="titulo-guardado">
+      <h2 id="titulo-guardado">¡Guardado!</h2>
+      <p>ID de reporte: <strong>{{ report_id }}</strong></p>
+      <p>Transacción (tx): <strong>{{ tx_id }}</strong></p>
+
+      <div class="actions" style="margin-top:12px">
+        <a class="btn outline" href="{{ url_for('routes.index') }}">Volver</a>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
