@@ -61,10 +61,14 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     numero_limpio = limpiar_numero(to)
 
     WELCOME_MSG = (
-        "👋 Hola, soy el asistente de PX Salud.\n"
-        "Para empezar necesito verificar tu identidad.\n\n"
-        "✍️ Por favor, escribí el DNI (sólo números) de la persona que necesita atención médica."
-    )
+    "👋 Hola, soy el asistente de PX Salud.\n"
+    "Este servicio cumple con la Ley 25.326 de Protección de Datos Personales. "
+    "Al continuar, nos das tu consentimiento para usar tus datos. "
+    "Si en algún momento querés retirarlo, podés escribir a soporte@pacientex.com.ar\n\n"
+
+    "Para empezar necesito verificar tu identidad.\n"
+    "✍️ Por favor, escribí el DNI (sólo números) de la persona que necesita atención médica."
+)
 
 
     tx = Transactions()

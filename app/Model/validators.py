@@ -38,8 +38,7 @@ def is_integer(value: Any) -> bool:
     return isinstance(value, int)
 
 def is_float(value: Any) -> bool:
-    """Valida si el valor es un número de punto flotante."""
-    return isinstance(value, float)
+    return isinstance(value, (int, float))
 
 def is_boolean(value: Any) -> bool:
     """Valida si el valor es un booleano."""

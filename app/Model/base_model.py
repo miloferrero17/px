@@ -186,6 +186,7 @@ class BaseModel:
             }
             response = requests.get(url, headers=headers)
             data = response.json()
+            
             return data[0] if data else None
 
         

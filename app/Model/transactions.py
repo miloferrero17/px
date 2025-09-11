@@ -16,7 +16,16 @@ class Transactions(BaseModel):
             "timestamp": Field(None, DataType.TIMESTAMP, False, False),
             "puntuacion": Field(None, DataType.INTEGER, True, False),  # int2 / SMALLINT
             "comentario": Field(None, DataType.STRING, True, False),    # text
-            "data_created": Field(None, DataType.TIMESTAMP, False, False)  # timestamp de creación
+            "data_created": Field(None, DataType.TIMESTAMP, False, False),  # timestamp de creación
+
+
+            "amount": Field(None, DataType.FLOAT, True, False),              # double precision
+            "currency": Field(None, DataType.STRING, True, False),           # ej. "ARS"
+            "status": Field(None, DataType.STRING, True, False),             # pending | paid | to_collect | no_copay | failed
+            "method": Field(None, DataType.STRING, True, False),             # transfer | cash | card
+            "receipt_url": Field(None, DataType.STRING, True, False),        # por ahora NULL
+            "paid_at": Field(None, DataType.TIMESTAMP, True, False),         # timestamptz
+            "payment_reference": Field(None, DataType.STRING, True, True),
         }
         super().__init__("transactions", fields)
         # Exponer los campos para facilitar su uso
@@ -32,7 +41,15 @@ class Transactions(BaseModel):
         event_id: Optional[int] = None,
         puntuacion: Optional[int] = None,
         comentario: Optional[str] = None,
-        data_created: Optional[str] = None
+        data_created: Optional[str] = None,
+
+        amount: Optional[float] = None,
+        currency: Optional[str] = None,
+        status: Optional[str] = None,
+        method: Optional[str] = None,
+        receipt_url: Optional[str] = None,
+        paid_at: Optional[str] = None,
+        payment_reference: Optional[str] = None,
     ) -> int:
         # Inicializa el id en None para auto-incrementar
         self.data["id"].value = None
@@ -45,6 +62,16 @@ class Transactions(BaseModel):
         self.data["puntuacion"].value = puntuacion
         self.data["comentario"].value = comentario
         self.data["data_created"].value = data_created
+
+
+        self.data["amount"].value = amount
+        self.data["currency"].value = currency
+        self.data["status"].value = status
+        self.data["method"].value = method
+        self.data["receipt_url"].value = receipt_url
+        self.data["paid_at"].value = paid_at
+        self.data["payment_reference"].value = payment_reference
+
         return super().add()
 
     def get_by_id(self, id: int) -> Optional[TransactionsRegister]:
@@ -97,7 +124,17 @@ class Transactions(BaseModel):
         timestamp: Optional[str] = None,
         event_id: Optional[int] = None,
         puntuacion: Optional[int] = None,
-        comentario: Optional[str] = None
+        comentario: Optional[str] = None,
+
+        amount: Optional[float] = None,
+        currency: Optional[str] = None,
+        status: Optional[str] = None,
+        method: Optional[str] = None,
+        receipt_url: Optional[str] = None,
+        paid_at: Optional[str] = None,
+        payment_reference: Optional[str] = None
+
+
     ) -> None:
         # Establecer id para la clave única
         self.data["id"].value = id
@@ -118,6 +155,23 @@ class Transactions(BaseModel):
             self.data["puntuacion"].value = puntuacion
         if comentario is not None:
             self.data["comentario"].value = comentario
+
+        
+        if amount is not None:
+            self.data["amount"].value = amount
+        if currency is not None:
+            self.data["currency"].value = currency
+        if status is not None:
+            self.data["status"].value = status
+        if method is not None:
+            self.data["method"].value = method
+        if receipt_url is not None:
+            self.data["receipt_url"].value = receipt_url
+        if paid_at is not None:
+            self.data["paid_at"].value = paid_at
+        if payment_reference is not None:
+            self.data["payment_reference"].value = payment_reference
+
         # Llama a la actualización usando 'id' como clave única
         super().update("id", id)
 
