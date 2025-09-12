@@ -61,13 +61,13 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     numero_limpio = limpiar_numero(to)
 
     WELCOME_MSG = (
-    "👋 Hola, soy el asistente de PX Salud.\n"
+    "👋 Hola, soy el asistente de PX Salud.\n\n"
     "Este servicio cumple con la Ley 25.326 de Protección de Datos Personales. "
     "Al continuar, nos das tu consentimiento para usar tus datos. "
     "Si en algún momento querés retirarlo, podés escribir a soporte@pacientex.com.ar\n\n"
 
     "Para empezar necesito verificar tu identidad.\n"
-    "✍️ Por favor, escribí el DNI (sólo números) de la persona que necesita atención médica."
+    "✍️ Por favor, escribí el DNI de la persona que necesita atención médica."
 )
 
 
@@ -394,7 +394,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     variables["conversation_history"] = ch
     variables["conversation_str"] = json.dumps(ch)
 
-    # Persistir conversación completa
+    # Persistir conversación sleta
     open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
     estado = "Cerrada" if variables.get("result") == "Cerrada" else "Abierta"
 

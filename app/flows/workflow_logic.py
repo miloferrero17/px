@@ -393,7 +393,7 @@ MESSAGES = {
     "RETRY_CREDENTIAL": (
         "No pude tomar bien los datos. Reintentemos: enviá de nuevo la credencial o escribí Particular."
     ),
-    "TO_HUMAN": "Acercate a admisión.",
+    "TO_HUMAN": "Acercate a admisión para recibir ayuda.",
 
     # 210 confirmación
     "CONFIRM_HEADER": "Revisá y confirmá tus datos:\n\n",
@@ -403,8 +403,8 @@ MESSAGES = {
         "Plan: {plan}\n"
         "Afiliado: {afiliado}\n"
         "Token: {token}\n\n"
-        "{footer}\n"
-        "¿Está bien? SI/NO"
+        "{footer}\n\n"
+        "¿Los datos son correctos? SI/NO"
     ),
     "CONFIRM_FOOTER_COPAY": "Copago a abonar: ${monto} 💵",
     "CONFIRM_FOOTER_NO_COPAY": "No hay copago.",
@@ -436,12 +436,15 @@ def nodo_207(variables):
     """
     207 - Pedir credencial O detectar 'particular'.
       - Detecta cualquier mensaje que contenga "particular".
+      - Acepta credencial por adjunto **solo imagen** (PDF no).
       - Extrae: nombre, apellido, obra, plan, afiliado, token (token opcional).
       - Requiere: obra + afiliado.
       - Si OK → guarda draft y deriva a 210 (confirmación con monto).
+      - Al agotar intentos / 2º error consecutivo → 212 (humano) para evitar loops.
     """
-    import json, re, unicodedata
+    import json, re
     import app.services.brain as brain
+    from app.flows.workflows_utils import norm_text, calc_amount
 
     ASK = MESSAGES["ASK_CREDENTIAL"]
     RETRY = MESSAGES["RETRY_CREDENTIAL"]
@@ -450,21 +453,26 @@ def nodo_207(variables):
     MAX_CRED_ATTEMPTS = 2  # tope acumulado 207/210
 
     def _cred_attempts_count(hist):
-        return sum( 1 for m in hist if isinstance(m, dict) and m.get("role") == "meta" and m.get("content") == "[CRED_ATTEMPT]")
+        return sum(
+            1 for m in hist
+            if isinstance(m, dict) and m.get("role") == "meta" and m.get("content") == "[CRED_ATTEMPT]"
+        )
 
     def _cred_attempts_add(hist):
         hist.append({"role": "meta", "content": "[CRED_ATTEMPT]"})
 
-    # Helpers
-    def norm(s: str) -> str:
-        s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
-        s = s.lower().strip()
-        s = re.sub(r"\s+", " ", s)
-        return s
+    # Helpers de adjuntos (compatibles con 211)
+    def _last_user(msgs):
+        for m in reversed(msgs):
+            if isinstance(m, dict) and m.get("role") == "user":
+                return (m.get("content") or "").strip()
+        return ""
 
-    def count(hist, text):
-        return sum(1 for m in hist if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") == text)
-    
+    def _attachment_kind(s: str) -> str:
+        # Soporta "[Adjunto image]" | "[Adjunto image/jpeg]" | "[Adjunto application/pdf]"
+        m = re.match(r"^\[Adjunto ([^\]]+)\]", s or "")
+        return (m.group(1).strip().lower() if m else "")
+
     # Historial seguro
     conversation_str = variables.get("conversation_str", "")
     try:
@@ -474,89 +482,55 @@ def nodo_207(variables):
     except Exception:
         history = []
 
-
-
     user_msg = (variables.get("body") or "").strip()
-    user_norm = norm(user_msg)
+    user_norm = norm_text(user_msg)
 
-    # 1) 'particular' en cualquier frase → ir a 210 con draft mínima
+    # 1) 'particular' en cualquier frase → ir directo a pago (PARTICULAR/UNICO)
     if re.search(r"\bparticular\b", user_norm):
-        # Saltar confirmación: ir directo a pagos con PART/UNICO
-        from app.Model.coverages import Coverages
-
         obra_txt = "Particular"
-        plan_norm = "UNICO"
+        plan_txt = "UNICO"
 
-        # Calcular monto de "Particular"
-        cv = Coverages()
-        amount = None
-        try:
-            amount = cv.get_amount_by_name_and_plan("PARTICULAR", "UNICO")
-            if amount is None:
-                amount = cv.get_amount_by_name("PARTICULAR")
-        except Exception as e:
-            print(f"[207] Error Coverages (Particular): {e}")
-            amount = None
+        amount = calc_amount("PARTICULAR", "UNICO")
+        if amount is None or float(amount) <= 0:
+            # Evitar loop si la tabla de montos está mal
+            return {
+                "nodo_destino": 212,
+                "subsiguiente": 0,
+                "conversation_str": variables.get("conversation_str", ""),
+                "response_text": "",
+                "group_id": None,
+                "question_id": None,
+                "result": "Cerrada",
+            }
 
-        # Persistir cobertura en contacts (sin token)
+        # Persistencia mínima (best-effort)
         try:
             ctt = variables.get("ctt")
             contacto = variables.get("contacto")
             if ctt and contacto:
                 try:
-                    # name no cambia acá; sólo coverage/plan/member_id/token=None
                     ctt.set_coverage(
                         contact_id=contacto.contact_id,
                         coverage=obra_txt,
-                        plan=plan_norm,
+                        plan=plan_txt,
                         member_id=None,
-                        token=None,    # <- no guardamos token
+                        token=None,
                     )
                 except Exception as e:
                     print(f"[207] set_coverage no disponible (Particular): {e}")
         except Exception as e:
             print(f"[207] Error persistiendo en contacts (Particular): {e}")
 
-        # Actualizar transacción y enrutar
         try:
             tx = variables.get("tx")
             contacto = variables.get("contacto")
             open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id) if (tx and contacto) else None
-            if open_tx_id and amount is not None:
-                if float(amount) > 0:
-                    tx.update(id=open_tx_id, amount=float(amount), currency="ARS", status="pending")
-                else:
-                    tx.update(id=open_tx_id, amount=0.0, currency="ARS", status="no_copay")
+            if open_tx_id:
+                tx.update(id=open_tx_id, amount=float(amount), currency="ARS", status="pending")
         except Exception as e:
             print(f"[207] Error actualizando tx (Particular): {e}")
 
-        # Routing según monto
-        if amount is None:
-            # No pudimos determinar monto → a admisión
-            return {
-                "nodo_destino": 212,
-                "subsiguiente": 1,
-                "conversation_str": variables.get("conversation_str", ""),
-                "response_text": MESSAGES["TO_HUMAN"],
-                "group_id": None,
-                "question_id": None,
-                "result": "Cerrada",
-            }
-
-        if float(amount) <= 0:
-            # No hay copago (raro en Particular, pero contemplado)
-            return {
-                "nodo_destino": 213,
-                "subsiguiente": 1,
-                "conversation_str": variables.get("conversation_str", ""),
-                "response_text": MESSAGES["WAITING"],
-                "group_id": None,
-                "question_id": None,
-                "result": "Abierta",
-            }
-
-        # Monto válido → ir a medios de pago
-        variables["payment_info"] = {"obra": obra_txt, "plan": plan_norm, "amount": float(amount)}
+        variables["payment_info"] = {"obra": obra_txt, "plan": plan_txt, "amount": float(amount)}
         return {
             "nodo_destino": 208,
             "subsiguiente": 0,
@@ -567,10 +541,11 @@ def nodo_207(variables):
             "result": "Abierta",
         }
 
-
-
     # 2) Primera vez → pedir credencial
-    asked_once = any(isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") == ASK for m in history)
+    asked_once = any(
+        isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") == ASK
+        for m in history
+    )
     if not asked_once:
         history.append({"role": "assistant", "content": ASK})
         new_cs = json.dumps(history)
@@ -583,6 +558,7 @@ def nodo_207(variables):
             "question_id": None,
             "result": "Abierta",
         }
+
     # === Tomar sólo los mensajes posteriores al último ASK/RETRY ===
     last_prompt_idx = -1
     for i in range(len(history) - 1, -1, -1):
@@ -590,13 +566,17 @@ def nodo_207(variables):
         if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") in (ASK, RETRY):
             last_prompt_idx = i
             break
-
     recent = history[last_prompt_idx + 1:] if last_prompt_idx >= 0 else history
+    last_prompt_content = (history[last_prompt_idx]["content"]
+                           if last_prompt_idx >= 0 and isinstance(history[last_prompt_idx], dict)
+                           else None)
+    last_prompt_was_retry = (last_prompt_content == RETRY)
+    # Anti-bucle: ¿cuántos RETRY ya mandamos desde el último prompt?
+    
 
-    # Si todavía no hay ningún mensaje del paciente después del último ASK/RETRY, no intentes extraer
+    # Si no hay mensaje del paciente después del ASK/RETRY → no spamear
     has_new_user_after_prompt = any(isinstance(m, dict) and m.get("role") == "user" for m in recent)
     if not has_new_user_after_prompt:
-        # no mandamos otro ASK para no spamear; esperamos nuevo input
         return {
             "nodo_destino": 207,
             "subsiguiente": 1,
@@ -607,7 +587,57 @@ def nodo_207(variables):
             "result": "Abierta",
         }
 
-    # 3) Intentar extraer datos del historial
+    # --- Adjuntos: validar tipo (solo imagen; PDF NO) ---
+    last_user_msg = _last_user(recent)
+    if last_user_msg.startswith("[Adjunto "):
+        kind = _attachment_kind(last_user_msg)
+        is_image = (kind == "image") or kind.startswith("image/")
+        is_pdf = (kind == "application/pdf")
+
+        if is_pdf:
+            # 2º error consecutivo → 212 aunque no se haya persistido el meta
+            if last_prompt_was_retry:
+                history.append({"role": "assistant", "content": TO_HUMAN})
+                new_cs = json.dumps(history)
+                return {
+                    "nodo_destino": 212,
+                    "subsiguiente": 1,
+                    "conversation_str": new_cs,
+                    "response_text": TO_HUMAN,
+                    "group_id": None,
+                    "question_id": None,
+                    "result": "Cerrada",
+                }
+
+            # Intento contable normal
+            attempts = _cred_attempts_count(history)
+            if attempts >= (MAX_CRED_ATTEMPTS - 1):
+                history.append({"role": "assistant", "content": TO_HUMAN})
+                new_cs = json.dumps(history)
+                return {
+                    "nodo_destino": 212,
+                    "subsiguiente": 1,
+                    "conversation_str": new_cs,
+                    "response_text": TO_HUMAN,
+                    "group_id": None,
+                    "question_id": None,
+                    "result": "Cerrada",
+                }
+            _cred_attempts_add(history)
+            history.append({"role": "assistant", "content": RETRY})
+            new_cs = json.dumps(history)
+            return {
+                "nodo_destino": 207,
+                "subsiguiente": 1,
+                "conversation_str": new_cs,
+                "response_text": RETRY,
+                "group_id": None,
+                "question_id": None,
+                "result": "Abierta",
+            }
+        # Si es imagen, seguimos al extractor.
+
+    # 3) Intentar extraer datos del historial (desde 'recent')
     extract_prompt = [{
         "role": "system",
         "content": (
@@ -623,7 +653,7 @@ def nodo_207(variables):
         )
     }, {
         "role": "user",
-        "content": json.dumps(recent)  # <<--- antes usaba variables.get("conversation_str", "")
+        "content": json.dumps(recent)
     }]
 
     try:
@@ -644,13 +674,10 @@ def nodo_207(variables):
     afiliado = (data.get("afiliado") or "").strip()
     token = (data.get("token") or "").strip()
 
-    # Regla: obra + afiliado obligatorios (token/plan opcionales)
-    # Regla: obra + afiliado obligatorios (token/plan opcionales).
-    # Usa contador cruzado con 210 (tope 2 intentos en total).
+    # Regla: obra + afiliado obligatorios
     if not obra or not afiliado:
-        attempts = _cred_attempts_count(history)
-        if attempts >= (MAX_CRED_ATTEMPTS - 1):
-            # alcanzó el tope acumulado → admisión
+        # 2º error consecutivo → 212 (anti-bucle aun si meta no persiste)
+        if last_prompt_was_retry:
             history.append({"role": "assistant", "content": TO_HUMAN})
             new_cs = json.dumps(history)
             return {
@@ -663,7 +690,20 @@ def nodo_207(variables):
                 "result": "Cerrada",
             }
 
-        # aún puede reintentar: marcamos intento y pedimos reintento
+        attempts = _cred_attempts_count(history)
+        if attempts >= (MAX_CRED_ATTEMPTS - 1):
+            history.append({"role": "assistant", "content": TO_HUMAN})
+            new_cs = json.dumps(history)
+            return {
+                "nodo_destino": 212,
+                "subsiguiente": 1,
+                "conversation_str": new_cs,
+                "response_text": TO_HUMAN,
+                "group_id": None,
+                "question_id": None,
+                "result": "Cerrada",
+            }
+
         _cred_attempts_add(history)
         history.append({"role": "assistant", "content": RETRY})
         new_cs = json.dumps(history)
@@ -676,7 +716,6 @@ def nodo_207(variables):
             "question_id": None,
             "result": "Abierta",
         }
-
 
     # OK → guardar draft y pasar a 210
     variables["coverage_draft"] = {
@@ -699,7 +738,6 @@ def nodo_207(variables):
 
 
 
-
 def nodo_208(variables):
     """
     Pago (particular o copago). Envía 3 mensajes y deriva a 211.
@@ -707,6 +745,7 @@ def nodo_208(variables):
     """
     import json
     import app.services.twilio_service as twilio
+    from app.flows.workflows_utils import fmt_amount
 
     numero_limpio = variables.get("numero_limpio")
     sender_number = "whatsapp:+" + numero_limpio if numero_limpio else None
@@ -714,14 +753,11 @@ def nodo_208(variables):
     info = variables.get("payment_info") or {}
     amount = info.get("amount")
 
-    def fmt_amt(a):
-        try:
-            return f"{float(a):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except Exception:
-            return "-"
+    
 
     if sender_number:
-        twilio.send_whatsapp_message(MESSAGES["PAYMENT_1"].format(monto=fmt_amt(amount)), sender_number, None)
+        twilio.send_whatsapp_message(MESSAGES["PAYMENT_1"].format(monto=fmt_amount(amount)), sender_number, None)
+
         twilio.send_whatsapp_message(MESSAGES["PAYMENT_2"], sender_number, None)
         twilio.send_whatsapp_message(MESSAGES["PAYMENT_3"], sender_number, None)
 
@@ -734,10 +770,9 @@ def nodo_208(variables):
         history = []
 
     history.extend([
-        {"role": "assistant", "content": MESSAGES["PAYMENT_1"].format(monto=fmt_amt(amount))},
-        {"role": "assistant", "content": MESSAGES["PAYMENT_2"]},
-        {"role": "assistant", "content": MESSAGES["PAYMENT_3"]},
-    ])
+    {"role": "assistant", "content": MESSAGES["PAYMENT_1"].format(monto=fmt_amount(amount))},
+    {"role": "assistant", "content": MESSAGES["PAYMENT_2"]},
+    {"role": "assistant", "content": MESSAGES["PAYMENT_3"]},])
     new_cs = json.dumps(history)
 
     return {
@@ -760,8 +795,8 @@ def nodo_210(variables):
           * SI  → persiste datos; monto > 0 → 208; monto = 0 → 213; monto None → 212
           * NO  → contabiliza intento cruzado (con 207); si alcanzó tope → 212; sino vuelve a 207 (ASK)
     """
-    import json, re, unicodedata
-    from app.Model.coverages import Coverages
+    import json, re
+    from app.flows.workflows_utils import ( norm_text,plan_norm as plan_norm_helper,fmt_amount,calc_amount,)
 
     TO_HUMAN = MESSAGES["TO_HUMAN"]
     ASK = MESSAGES["ASK_CREDENTIAL"]
@@ -777,38 +812,6 @@ def nodo_210(variables):
 
     def _cred_attempts_add(history):
         history.append({"role": "meta", "content": "[CRED_ATTEMPT]"})
-
-    # Normaliza obra: quita tildes, colapsa espacios y pasa a MAYÚSCULAS
-    def _deaccent_upper(s: str) -> str:
-        s = ''.join(c for c in unicodedata.normalize('NFD', s or "") if unicodedata.category(c) != 'Mn')
-        s = re.sub(r"\s+", " ", s).strip().upper()
-        return s
-
-    def _plan_norm(s: str) -> str:
-        return re.sub(r"\s+", "", (s or "").strip()).upper() or "UNICO"
-
-    def _fmt_amt(a):
-        try:
-            return f"{float(a):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except Exception:
-            return "-"
-
-    def _calc_amount(obra_norm: str, plan_norm: str):
-        cv = Coverages()
-        amt = None
-        try:
-            if obra_norm == "PARTICULAR":
-                amt = cv.get_amount_by_name_and_plan("PARTICULAR", "UNICO")
-                if amt is None:
-                    amt = cv.get_amount_by_name("PARTICULAR")
-            else:
-                amt = cv.get_amount_by_name_and_plan(obra_norm, plan_norm)
-                if amt is None:
-                    amt = cv.get_amount_by_name(obra_norm)
-        except Exception as e:
-            print(f"[210] Error Coverages: {e}")
-            amt = None
-        return amt
 
     def _parse_last_confirmation(history):
         # Busca el último mensaje de confirmación enviado por el bot
@@ -843,14 +846,8 @@ def nodo_210(variables):
         history = []
 
     # Normalizador de input del usuario
-    def norm(s: str) -> str:
-        s = ''.join(c for c in unicodedata.normalize('NFD', s or "") if unicodedata.category(c) != 'Mn')
-        s = s.lower().strip()
-        s = re.sub(r"\s+", " ", s)
-        return s
-
     user_msg = (variables.get("body") or "").strip()
-    user_norm = norm(user_msg)
+    user_norm = norm_text(user_msg)
     is_yes = bool(re.search(r"\bsi\b|\bsí\b", user_norm))
     is_no  = bool(re.search(r"\bno\b", user_norm))
 
@@ -875,9 +872,9 @@ def nodo_210(variables):
         afiliado  = (parsed.get("afiliado") or "").strip()
         token     = (parsed.get("token") or "").strip()
 
-        obra_norm = _deaccent_upper(obra_txt)
-        plan_norm = _plan_norm(plan_txt)
-        amount    = _calc_amount(obra_norm, plan_norm)
+        # Normalizaciones y cálculo con helpers
+        plan_n   = plan_norm_helper(plan_txt)
+        amount   = calc_amount(obra_txt, plan_txt)  # calc_amount normaliza internamente
 
         if is_yes:
             # Persistencia mínima
@@ -894,7 +891,7 @@ def nodo_210(variables):
                         ctt.set_coverage(
                             contact_id=contacto.contact_id,
                             coverage=(obra_txt or None),
-                            plan=(plan_norm or None),
+                            plan=(plan_n or None),
                             member_id=(afiliado or None),
                             token=(None),
                         )
@@ -911,6 +908,7 @@ def nodo_210(variables):
                 if open_tx_id:
                     currency = "ARS"
                     if amount is None:
+                        # no tocamos la tx; ruteamos a 212 abajo
                         pass
                     elif float(amount) <= 0:
                         tx.update(id=open_tx_id, amount=0.0, currency=currency, status="no_copay")
@@ -919,6 +917,7 @@ def nodo_210(variables):
             except Exception as e:
                 print(f"[210] Error actualizando pago (SI): {e}")
 
+            # Routing según monto
             if amount is None:
                 return {
                     "nodo_destino": 212,
@@ -932,20 +931,20 @@ def nodo_210(variables):
             if float(amount) <= 0:
                 return {
                     "nodo_destino": 213,
-                    "subsiguiente": 1,
+                    "subsiguiente": 0,
                     "conversation_str": variables.get("conversation_str", ""),
-                    "response_text": MESSAGES["WAITING"],
+                    "response_text": "",
                     "group_id": None,
                     "question_id": None,
                     "result": "Abierta",
                 }
 
-            variables["payment_info"] = {"obra": obra_txt, "plan": plan_norm, "amount": float(amount)}
-            # No usamos _210_cache; limpiamos por si quedó de versiones anteriores
+            # Monto válido → a pago inmediato
+            variables["payment_info"] = {"obra": obra_txt, "plan": plan_n, "amount": float(amount)}
             variables.pop("_210_cache", None)
             return {
                 "nodo_destino": 208,
-                "subsiguiente": 0,
+                "subsiguiente": 0,  # ejecutar 208 ahora
                 "conversation_str": variables.get("conversation_str", ""),
                 "response_text": "",
                 "group_id": None,
@@ -977,7 +976,7 @@ def nodo_210(variables):
         new_cs = json.dumps(history)
         return {
             "nodo_destino": 207,
-            "subsiguiente": 1,
+            "subsiguiente": 1,   # volver a pedir credencial y esperar
             "conversation_str": new_cs,
             "response_text": ASK,
             "group_id": None,
@@ -994,14 +993,13 @@ def nodo_210(variables):
     afiliado = (draft.get("afiliado") or "").strip()
     token    = (draft.get("token") or "").strip()
 
-    obra_norm = _deaccent_upper(obra_txt)
-    plan_norm = _plan_norm(plan_txt)
-    amount    = _calc_amount(obra_norm, plan_norm)
+    # Cálculo del monto para mostrar en la confirmación
+    amount = calc_amount(obra_txt, plan_txt)
 
     footer = (
         MESSAGES["CONFIRM_FOOTER_NO_COPAY"]
         if (amount is None or float(amount) <= 0)
-        else MESSAGES["CONFIRM_FOOTER_COPAY"].format(monto=_fmt_amt(amount))
+        else MESSAGES["CONFIRM_FOOTER_COPAY"].format(monto=fmt_amount(amount))
     )
 
     confirm_text = (
@@ -1010,7 +1008,7 @@ def nodo_210(variables):
             nombre=nombre or "",
             apellido=apellido or "",
             obra=obra_txt,
-            plan=plan_norm,
+            plan=plan_norm_helper(plan_txt),
             afiliado=afiliado,
             token=token or "",
             footer=footer,
@@ -1022,13 +1020,14 @@ def nodo_210(variables):
 
     return {
         "nodo_destino": 210,
-        "subsiguiente": 1,
+        "subsiguiente": 1,  # << esperar la respuesta SI/NO del paciente
         "conversation_str": new_cs,
         "response_text": confirm_text,
         "group_id": None,
         "question_id": None,
         "result": "Abierta",
     }
+
 
 def nodo_211(variables):
     """
@@ -1038,7 +1037,8 @@ def nodo_211(variables):
       - 'Efectivo' o 'Tarjeta' → 212 (admisión) y cerrar
       - Inválidos → pedir reenviar (máx 2), luego 212
     """
-    import json, re, unicodedata
+    import json, re
+    from app.flows.workflows_utils import norm_text  # usar helper común
 
     OK = MESSAGES["RECEIPT_OK"]
     PLEASE_IMG = MESSAGES["PLEASE_IMG"]
@@ -1062,38 +1062,33 @@ def nodo_211(variables):
             last_user = (m.get("content") or "").strip()
             break
 
-    # Normalizador
-    def norm(s: str) -> str:
-        s = ''.join(c for c in unicodedata.normalize('NFD', s or "") if unicodedata.category(c) != 'Mn')
-        s = s.lower().strip()
-        s = re.sub(r"\s+", " ", s)
-        return s
-
-    # >>> NUEVO: comandos solo desde BODY
-    body_raw = (variables.get("body") or "")
-    cmd_text = norm(body_raw)
-    print(f"[211] DEBUG Body raw='{body_raw}' | norm='{cmd_text}'")  # << debug
-
     def retries_count():
+        # Cuenta cuántas veces ya pedimos "PLEASE_IMG"
         return sum(
             1 for m in history
-            if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") == PLEASE_IMG
+            if isinstance(m, dict)
+            and m.get("role") == "assistant"
+            and m.get("content") == PLEASE_IMG
         )
 
     def extract_kind(s: str) -> str:
-        # Soporta "[Adjunto image]" o "[Adjunto image/jpeg]" o "[Adjunto application/pdf]"
+        # Soporta "[Adjunto image]" | "[Adjunto image/jpeg]" | "[Adjunto application/pdf]"
         m = re.match(r"^\[Adjunto ([^\]]+)\]", s or "")
-        kind = (m.group(1).strip() if m else "")
-        return kind
+        return (m.group(1).strip() if m else "")
+
+    body_raw = (variables.get("body") or "")
+    cmd_text = norm_text(body_raw)
+    print(f"[211] DEBUG Body raw='{body_raw}' | norm='{cmd_text}'")  # << debug
 
     # --- 1) COMANDOS (solo por BODY) ---
     if cmd_text:
+        # Menú de otros medios
         if re.search(r"\both?ros\b|\botros\b", cmd_text):
             history.append({"role": "assistant", "content": OTHERS_MENU})
             new_cs = json.dumps(history)
             return {
                 "nodo_destino": 211,
-                "subsiguiente": 1,
+                "subsiguiente": 1,   # esperar elección (efectivo/tarjeta)
                 "conversation_str": new_cs,
                 "response_text": OTHERS_MENU,
                 "group_id": None,
@@ -1101,6 +1096,7 @@ def nodo_211(variables):
                 "result": "Abierta",
             }
 
+        # Efectivo
         if re.search(r"\befectivo\b", cmd_text):
             history.append({"role": "assistant", "content": CASH_MSG})
             new_cs = json.dumps(history)
@@ -1125,8 +1121,8 @@ def nodo_211(variables):
                 "result": "Cerrada",
             }
 
+        # Tarjeta
         if re.search(r"\btarjeta\b", cmd_text):
-            # Para tarjeta mostramos "Acercate a admisión."
             history.append({"role": "assistant", "content": TO_HUMAN})
             new_cs = json.dumps(history)
 
@@ -1149,6 +1145,8 @@ def nodo_211(variables):
                 "question_id": None,
                 "result": "Cerrada",
             }
+
+
 
     # --- 2) ADJUNTOS (solo por historial: last_user) ---
     if last_user.startswith("[Adjunto "):
@@ -1179,9 +1177,9 @@ def nodo_211(variables):
 
             return {
                 "nodo_destino": 213,
-                "subsiguiente": 1,
+                "subsiguiente": 0,  
                 "conversation_str": new_cs,
-                "response_text": OK,
+                "response_text": "",
                 "group_id": None,
                 "question_id": None,
                 "result": "Abierta",
@@ -1200,11 +1198,12 @@ def nodo_211(variables):
                 "question_id": None,
                 "result": "Cerrada",
             }
+
         history.append({"role": "assistant", "content": PLEASE_IMG})
         new_cs = json.dumps(history)
         return {
             "nodo_destino": 211,
-            "subsiguiente": 1,
+            "subsiguiente": 1,   # esperar que envíe la imagen/pdf válida
             "conversation_str": new_cs,
             "response_text": PLEASE_IMG,
             "group_id": None,
@@ -1217,7 +1216,7 @@ def nodo_211(variables):
         history.append({"role": "assistant", "content": TO_HUMAN})
         new_cs = json.dumps(history)
         return {
-            "nodo_destino": 212,
+            "nodo_destino": 211,
             "subsiguiente": 1,
             "conversation_str": new_cs,
             "response_text": TO_HUMAN,
@@ -1230,7 +1229,7 @@ def nodo_211(variables):
     new_cs = json.dumps(history)
     return {
         "nodo_destino": 211,
-        "subsiguiente": 1,
+        "subsiguiente": 1,  # esperar el adjunto del paciente
         "conversation_str": new_cs,
         "response_text": PLEASE_IMG,
         "group_id": None,
@@ -1263,5 +1262,5 @@ def nodo_213(variables):
         "response_text": MESSAGES["WAITING"],
         "group_id": None,
         "question_id": None,
-        "result": "Abierta",
+        "result": "Cerrada",
     }
