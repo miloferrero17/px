@@ -36,3 +36,16 @@ class UserConfirmationStatus(Enum):
 class MessageType(Enum):
     SENT = 1
     RECEIVED = 2
+
+
+class TxStatus(Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    TO_COLLECT = "to_collect"
+    NO_COPAY = "no_copay"
+    FAILED = "failed"
+
+class TxMethod(Enum):
+    TRANSFER = "transfer"
+    CASH = "cash"
+    CARD = "card"

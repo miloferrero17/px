@@ -215,11 +215,20 @@ class Transactions(BaseModel):
             return 0
         ultima_tx = txs[-1]
         return 1 if ultima_tx.name == "Cerrada" else 0
+    def get_open_pending_transaction_by_contact_id(self, contact_id: int):
+        """
+        Devuelve la última transacción del contacto que está Abierta (name='Abierta')
+        y con status de cobro ('pending', 'to_collect', 'no_copay').
+        """
+        txs = self.get_by_contact_id(contact_id)
+        if not txs:
+            return None
+        candidatas = [
+            tx for tx in txs
+            if getattr(tx, "name", None) == "Abierta"
+            and getattr(tx, "status", None) in ("pending", "to_collect", "no_copay")
+        ]
+        return candidatas[-1] if candidatas else None
 
-'''
-if __name__ == "__main__":
-    phone = "5491133585362"
-    tx = Transactions()
-    esta_cerrada = tx.is_last_transaction_closed(phone)
-    print(esta_cerrada)
-'''
+
+   

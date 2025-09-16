@@ -62,9 +62,6 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     WELCOME_MSG = (
     "👋 Hola, soy el asistente de PX Salud.\n\n"
-    "Este servicio cumple con la Ley 25.326 de Protección de Datos Personales. "
-    "Al continuar, nos das tu consentimiento para usar tus datos. "
-    "Si en algún momento querés retirarlo, podés escribir a soporte@pacientex.com.ar\n\n"
 
     "Para empezar necesito verificar tu identidad.\n"
     "✍️ Por favor, escribí el DNI de la persona que necesita atención médica."
@@ -385,6 +382,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
     # Enviar respuesta
     mensaje_a_enviar = variables.get("response_text")
+    print(f"[SEND] nodo={variables.get('nodo_destino')} result={variables.get('result')} -> {mensaje_a_enviar!r}")
     if mensaje_a_enviar:
         twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
 

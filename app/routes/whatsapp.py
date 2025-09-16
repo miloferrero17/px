@@ -65,7 +65,7 @@ def whatsapp_reply():
                 print("🖼️ Es imagen")
                 twilio.send_whatsapp_message("Dejame ver tu imagen ...", sender_number)
                 description = vision.describe_image(reply_path)
-                print(f"🧠 Descripción generada: {description}")
+                #print(f"🧠 Descripción generada: {description}")
                 message_body = message_body + description
                 tiene_adjunto = 1
 

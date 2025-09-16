@@ -408,6 +408,8 @@ MESSAGES = {
     ),
     "CONFIRM_FOOTER_COPAY": "Copago a abonar: ${monto} 💵",
     "CONFIRM_FOOTER_NO_COPAY": "No hay copago.",
+    "CONFIRM_FOOTER_NO_COVERAGE" : "Esta cobertura no se encuentra dentro de las obras sociales o prepagas con convenio.",
+
 
     # 208 pagos (3 mensajes separados)
     "PAYMENT_1": (
@@ -428,8 +430,11 @@ MESSAGES = {
     "CASH_MSG": "Perfecto, abonás en efectivo. Acercate a admisión.",
 
     # 213 espera
-    "WAITING": "✅ Tus datos fueron registrados.\nPor favor, aguardá en la sala de espera. Te vamos a llamar.",
-}
+    "WAITING": "✅ Ya registramos tu consulta. Quedate en la sala de espera y aguardá a que te llamen.\n\n"
+    "Si tus síntomas empeoran, avisá en admisión de inmediato.",
+
+
+    }
 
 
 def nodo_207(variables):
@@ -450,16 +455,6 @@ def nodo_207(variables):
     RETRY = MESSAGES["RETRY_CREDENTIAL"]
     TO_HUMAN = MESSAGES["TO_HUMAN"]
 
-    MAX_CRED_ATTEMPTS = 2  # tope acumulado 207/210
-
-    def _cred_attempts_count(hist):
-        return sum(
-            1 for m in hist
-            if isinstance(m, dict) and m.get("role") == "meta" and m.get("content") == "[CRED_ATTEMPT]"
-        )
-
-    def _cred_attempts_add(hist):
-        hist.append({"role": "meta", "content": "[CRED_ATTEMPT]"})
 
     # Helpers de adjuntos (compatibles con 211)
     def _last_user(msgs):
@@ -503,7 +498,7 @@ def nodo_207(variables):
                 "result": "Cerrada",
             }
 
-        # Persistencia mínima (best-effort)
+        # Persistencia mínima ,guardo la info
         try:
             ctt = variables.get("ctt")
             contacto = variables.get("contacto")
@@ -571,10 +566,11 @@ def nodo_207(variables):
                            if last_prompt_idx >= 0 and isinstance(history[last_prompt_idx], dict)
                            else None)
     last_prompt_was_retry = (last_prompt_content == RETRY)
-    # Anti-bucle: ¿cuántos RETRY ya mandamos desde el último prompt?
+    
+    # Anti-bucle: ¿cuántos RETRY ya mande desde el último prompt?
     
 
-    # Si no hay mensaje del paciente después del ASK/RETRY → no spamear
+    # Si no hay mensaje del paciente después del ASK/RETRY → no reenvio
     has_new_user_after_prompt = any(isinstance(m, dict) and m.get("role") == "user" for m in recent)
     if not has_new_user_after_prompt:
         return {
@@ -610,20 +606,6 @@ def nodo_207(variables):
                 }
 
             # Intento contable normal
-            attempts = _cred_attempts_count(history)
-            if attempts >= (MAX_CRED_ATTEMPTS - 1):
-                history.append({"role": "assistant", "content": TO_HUMAN})
-                new_cs = json.dumps(history)
-                return {
-                    "nodo_destino": 212,
-                    "subsiguiente": 1,
-                    "conversation_str": new_cs,
-                    "response_text": TO_HUMAN,
-                    "group_id": None,
-                    "question_id": None,
-                    "result": "Cerrada",
-                }
-            _cred_attempts_add(history)
             history.append({"role": "assistant", "content": RETRY})
             new_cs = json.dumps(history)
             return {
@@ -635,6 +617,20 @@ def nodo_207(variables):
                 "question_id": None,
                 "result": "Abierta",
             }
+        if not is_image:
+            # Adjuntos neutrales (audio/docs) → reenviar ASK (no cuenta como inválido)
+            history.append({"role": "assistant", "content": ASK})
+            new_cs = json.dumps(history)
+            return {
+                "nodo_destino": 207,
+                "subsiguiente": 1,
+                "conversation_str": new_cs,
+                "response_text": ASK,
+                "group_id": None,
+                "question_id": None,
+                "result": "Abierta",
+            }
+
         # Si es imagen, seguimos al extractor.
 
     # 3) Intentar extraer datos del historial (desde 'recent')
@@ -674,7 +670,7 @@ def nodo_207(variables):
     afiliado = (data.get("afiliado") or "").strip()
     token = (data.get("token") or "").strip()
 
-    # Regla: obra + afiliado obligatorios
+        # Regla: obra + afiliado obligatorios
     if not obra or not afiliado:
         # 2º error consecutivo → 212 (anti-bucle aun si meta no persiste)
         if last_prompt_was_retry:
@@ -690,21 +686,7 @@ def nodo_207(variables):
                 "result": "Cerrada",
             }
 
-        attempts = _cred_attempts_count(history)
-        if attempts >= (MAX_CRED_ATTEMPTS - 1):
-            history.append({"role": "assistant", "content": TO_HUMAN})
-            new_cs = json.dumps(history)
-            return {
-                "nodo_destino": 212,
-                "subsiguiente": 1,
-                "conversation_str": new_cs,
-                "response_text": TO_HUMAN,
-                "group_id": None,
-                "question_id": None,
-                "result": "Cerrada",
-            }
-
-        _cred_attempts_add(history)
+        # 1º inválido → RETRY y quedarse en 207 esperando
         history.append({"role": "assistant", "content": RETRY})
         new_cs = json.dumps(history)
         return {
@@ -717,7 +699,7 @@ def nodo_207(variables):
             "result": "Abierta",
         }
 
-    # OK → guardar draft y pasar a 210
+    # ===== ÉXITO: obra+afiliado presentes → guardar draft, setear pending y derivar a 210 =====
     variables["coverage_draft"] = {
         "nombre": nombre,
         "apellido": apellido,
@@ -726,15 +708,42 @@ def nodo_207(variables):
         "afiliado": afiliado,
         "token": token,
     }
+
+    # Setear amount/currency/status='pending' en la tx abierta (para que 211 pueda validar)
+    try:
+        tx = variables.get("tx")
+        contacto = variables.get("contacto")
+        amt = calc_amount(obra, plan)
+
+        open_tx_id = None
+        if tx and contacto:
+            if hasattr(tx, "get_open_transaction_id_by_contact_id"):
+                open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
+            if not open_tx_id and hasattr(tx, "get_by_contact_id"):
+                rows = tx.get_by_contact_id(contacto.contact_id) or []
+                if rows:
+                    open_tx_id = rows[-1].id
+
+        print(f"[207] TX open_tx_id={open_tx_id} | amt={amt}")
+        if open_tx_id and (amt is not None):
+            tx.update(id=open_tx_id, amount=float(amt), currency="ARS", status="pending")
+        else:
+            print(f"[207] No se pudo setear pending (open_tx_id={open_tx_id}, amt={amt})")
+    except Exception as e:
+        print(f"[207] Error configurando tx pending: {e}")
+
+    print(f"[207] RETURN nodo_destino=210 subsiguiente=0 draft={variables.get('coverage_draft')}")
     return {
         "nodo_destino": 210,
-        "subsiguiente": 0,
+        "subsiguiente": 0,  # ejecutar 210 ya
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": "",
         "group_id": None,
         "question_id": None,
         "result": "Abierta",
     }
+
+
 
 
 
@@ -753,11 +762,35 @@ def nodo_208(variables):
     info = variables.get("payment_info") or {}
     amount = info.get("amount")
 
-    
+    # Asegurar que la tx quede en 'pending' con el monto
+    try:
+        tx = variables.get("tx")
+        contacto = variables.get("contacto")
+        open_tx_id = None
 
+        if tx and contacto:
+            # 1) Método estándar
+            if hasattr(tx, "get_open_transaction_id_by_contact_id"):
+                open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
+
+            # 2) Fallback: última tx del contacto
+            if not open_tx_id and hasattr(tx, "get_by_contact_id"):
+                rows = tx.get_by_contact_id(contacto.contact_id) or []
+                if rows:
+                    open_tx_id = rows[-1].id
+
+        if open_tx_id and amount is not None:
+            tx.update(id=open_tx_id, amount=float(amount), currency="ARS", status="pending")
+            print(f"[208] TX {open_tx_id} seteada a pending | amount={amount}, currency=ARS")
+        else:
+            print(f"[208] No se pudo actualizar TX (open_tx_id={open_tx_id}, amount={amount})")
+
+    except Exception as e:
+        print(f"[208] Error seteando tx pending: {e}")
+
+    # Enviar mensajes al paciente
     if sender_number:
         twilio.send_whatsapp_message(MESSAGES["PAYMENT_1"].format(monto=fmt_amount(amount)), sender_number, None)
-
         twilio.send_whatsapp_message(MESSAGES["PAYMENT_2"], sender_number, None)
         twilio.send_whatsapp_message(MESSAGES["PAYMENT_3"], sender_number, None)
 
@@ -770,9 +803,10 @@ def nodo_208(variables):
         history = []
 
     history.extend([
-    {"role": "assistant", "content": MESSAGES["PAYMENT_1"].format(monto=fmt_amount(amount))},
-    {"role": "assistant", "content": MESSAGES["PAYMENT_2"]},
-    {"role": "assistant", "content": MESSAGES["PAYMENT_3"]},])
+        {"role": "assistant", "content": MESSAGES["PAYMENT_1"].format(monto=fmt_amount(amount))},
+        {"role": "assistant", "content": MESSAGES["PAYMENT_2"]},
+        {"role": "assistant", "content": MESSAGES["PAYMENT_3"]},
+    ])
     new_cs = json.dumps(history)
 
     return {
@@ -784,6 +818,7 @@ def nodo_208(variables):
         "question_id": None,
         "result": "Abierta",
     }
+
 
 
 def nodo_210(variables):
@@ -844,18 +879,23 @@ def nodo_210(variables):
             history = []
     except Exception:
         history = []
+    
+    draft = variables.get("coverage_draft") or {}
+    print(f"[210] draft_in={draft}")
 
     # Normalizador de input del usuario
     user_msg = (variables.get("body") or "").strip()
     user_norm = norm_text(user_msg)
     is_yes = bool(re.search(r"\bsi\b|\bsí\b", user_norm))
     is_no  = bool(re.search(r"\bno\b", user_norm))
-
+    print(f"[210] user_norm={user_norm!r} is_yes={is_yes} is_no={is_no}")
     # --- 1) SI/NO: procesar ANTES de generar confirmación para evitar loop ---
     if is_yes or is_no:
         parsed = _parse_last_confirmation(history)
+        print(f"[210] parsed_from_history={parsed}")
         if not parsed:
             # No hay confirmación previa para leer → mandamos a admisión para evitar loops
+            print("[210] No hay confirmación previa -> TO_HUMAN")
             return {
                 "nodo_destino": 212,
                 "subsiguiente": 1,
@@ -875,6 +915,7 @@ def nodo_210(variables):
         # Normalizaciones y cálculo con helpers
         plan_n   = plan_norm_helper(plan_txt)
         amount   = calc_amount(obra_txt, plan_txt)  # calc_amount normaliza internamente
+        print(f"[210] YES/NO flow -> obra={obra_txt} plan={plan_txt} amount={amount}")
 
         if is_yes:
             # Persistencia mínima
@@ -919,6 +960,7 @@ def nodo_210(variables):
 
             # Routing según monto
             if amount is None:
+                print("[210] amount= None -> TO_HUMAN")
                 return {
                     "nodo_destino": 212,
                     "subsiguiente": 1,
@@ -929,6 +971,7 @@ def nodo_210(variables):
                     "result": "Cerrada",
                 }
             if float(amount) <= 0:
+                print("[210] amount<=0 -> 213")
                 return {
                     "nodo_destino": 213,
                     "subsiguiente": 0,
@@ -938,6 +981,7 @@ def nodo_210(variables):
                     "question_id": None,
                     "result": "Abierta",
                 }
+            print("[210] amount>0 -> 208")
 
             # Monto válido → a pago inmediato
             variables["payment_info"] = {"obra": obra_txt, "plan": plan_n, "amount": float(amount)}
@@ -995,12 +1039,17 @@ def nodo_210(variables):
 
     # Cálculo del monto para mostrar en la confirmación
     amount = calc_amount(obra_txt, plan_txt)
+    print(f"[210] confirm flow -> obra={obra_txt} plan={plan_txt} amount={amount}")
 
-    footer = (
-        MESSAGES["CONFIRM_FOOTER_NO_COPAY"]
-        if (amount is None or float(amount) <= 0)
-        else MESSAGES["CONFIRM_FOOTER_COPAY"].format(monto=fmt_amount(amount))
-    )
+
+    if amount is None:
+        # Cobertura no encontrada en la lista de convenios
+        footer = MESSAGES["CONFIRM_FOOTER_NO_COVERAGE"]
+    elif float(amount) <= 0:
+        footer = MESSAGES["CONFIRM_FOOTER_NO_COPAY"]
+    else:
+        footer = MESSAGES["CONFIRM_FOOTER_COPAY"].format(monto=fmt_amount(amount))
+
 
     confirm_text = (
         MESSAGES["CONFIRM_HEADER"] +
@@ -1014,6 +1063,8 @@ def nodo_210(variables):
             footer=footer,
         )
     )
+    print(f"[210] Saliendo con confirm_text (subsiguiente=1)")
+
 
     history.append({"role": "assistant", "content": confirm_text})
     new_cs = json.dumps(history)
@@ -1038,7 +1089,13 @@ def nodo_211(variables):
       - Inválidos → pedir reenviar (máx 2), luego 212
     """
     import json, re
-    from app.flows.workflows_utils import norm_text  # usar helper común
+    from app.flows.workflows_utils import (norm_text,parse_amount_ars,names_match,receipt_datetime_ba,is_today_not_future,amounts_equal_2dec,)
+    import app.services.brain as brain
+    from datetime import datetime, timezone
+    import app.services.brain as brain
+    from zoneinfo import ZoneInfo
+    import unicodedata
+
 
     OK = MESSAGES["RECEIPT_OK"]
     PLEASE_IMG = MESSAGES["PLEASE_IMG"]
@@ -1087,10 +1144,10 @@ def nodo_211(variables):
             history.append({"role": "assistant", "content": OTHERS_MENU})
             new_cs = json.dumps(history)
             return {
-                "nodo_destino": 211,
+                "nodo_destino": 212,
                 "subsiguiente": 1,   # esperar elección (efectivo/tarjeta)
                 "conversation_str": new_cs,
-                "response_text": OTHERS_MENU,
+                "response_text": "",
                 "group_id": None,
                 "question_id": None,
                 "result": "Abierta",
@@ -1155,35 +1212,124 @@ def nodo_211(variables):
         is_pdf = (kind == "application/pdf")
 
         if is_image or is_pdf:
-            history.append({"role": "assistant", "content": OK})
-            new_cs = json.dumps(history)
+            # 1) Extraer campos del comprobante con OpenAI usando el último user (incluye OCR/summary)
+            extract_prompt = [{
+                "role": "system",
+                "content": (
+                    "Del siguiente comprobante de transferencia (texto OCR o resumen), extraé SIEMPRE y SOLO:\n"
+                    "  - dia: en formato YYYY-MM-DD\n"
+                    "  - hora: en formato HH:MM (24 horas)\n"
+                    "  - destinatario: string\n"
+                    "  - monto: número en ARS (usa punto decimal, sin símbolos ni separadores de miles)\n"
+                    "Respondé SOLO JSON exacto con claves: dia, hora, destinatario, monto. "
+                    "Si algún dato no está, dejá cadena vacía."
+                )
+            }, {
+                "role": "user",
+                "content": last_user
+            }]
 
-            # pago por transferencia confirmado
-            from datetime import datetime, timezone
+            try:
+                raw = brain.ask_openai(extract_prompt)
+                print(f"[211] LLM RAW: {raw}")
+
+            except Exception as e:
+                raw = '{"dia":"","hora":"","destinatario":"","monto":""}'
+                print(f"[211] Error LLM: {e}")
+
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = {"dia": "", "hora": "", "destinatario": "", "monto": ""}
+
+            dia = (data.get("dia") or "").strip()
+            hora = (data.get("hora") or "").strip()
+            dest = (data.get("destinatario") or "").strip()
+            monto_raw = data.get("monto")  # puede venir como int/float o string
+            comp_amount = parse_amount_ars(monto_raw)
+
+            # 2) Traer monto esperado
+            expected_amount = None
+            tx_row = None
             try:
                 tx = variables.get("tx")
                 contacto = variables.get("contacto")
-                open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id) if (tx and contacto) else None
-                paid_now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-                if open_tx_id:
-                    tx.update(
-                        id=open_tx_id,
-                        status="paid",
-                        method="transfer",
-                        paid_at=paid_now
-                    )
+                if tx and contacto:
+                    # Preferencia: pending/to_collect/no_copay en la conversación Abierta
+                    if hasattr(tx, "get_open_pending_transaction_by_contact_id"):
+                        tx_row = tx.get_open_pending_transaction_by_contact_id(contacto.contact_id)
+
+                    # Fallback: última 'Abierta' (por si status no se guardó aún)
+                    if not tx_row and hasattr(tx, "get_last_abierta_by_contact_id"):
+                        tx_row = tx.get_last_abierta_by_contact_id(contacto.contact_id)
+
+                    if tx_row:
+                        expected_amount = float(getattr(tx_row, "amount", None) or 0.0)
+                        print(f"[211] TX encontrada -> id={tx_row.id} name={getattr(tx_row,'name',None)} "
+                            f"status={getattr(tx_row,'status',None)} amount={expected_amount} currency={getattr(tx_row,'currency',None)}")
+                    else:
+                        print("[211] No se encontró TX Abierta para este contacto.")
             except Exception as e:
-                print(f"[211] Error actualizando tx (paid/transfer): {e}")
+                print(f"[211] Error obteniendo tx: {e}")
+
+
+            # 3) Validaciones
+            ok = True
+
+            # 3.a) Monto (igualdad a 2 decimales)
+            print(f"[211] Comparo montos: comp={comp_amount} vs expected={expected_amount}")
+            if not amounts_equal_2dec(comp_amount, expected_amount):
+                ok = False
+
+            # 3.b) Destinatario
+            if ok and not names_match("Luciana Fernandez Bettelli", dest):
+                ok = False
+
+            # 3.c) Fecha/hora (hoy y no futura en Buenos Aires)
+            comp_local = receipt_datetime_ba(dia, hora)
+            if ok and not is_today_not_future(comp_local):
+                ok = False
+
+            # 4) Ruteo según validación
+            if not ok or (tx_row is None):
+                history.append({"role": "assistant", "content": TO_HUMAN})
+                new_cs = json.dumps(history)
+                return {
+                    "nodo_destino": 212,
+                    "subsiguiente": 1,
+                    "conversation_str": new_cs,
+                    "response_text": TO_HUMAN,
+                    "group_id": None,
+                    "question_id": None,
+                    "result": "Cerrada",
+                }
+
+            # 5) OK → marcar pagado con fecha/hora del comprobante (UTC)
+            history.append({"role": "assistant", "content": OK})
+            new_cs = json.dumps(history)
+            try:
+                paid_utc = comp_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+                variables.get("tx").update(
+                    id=tx_row.id,
+                    status="paid",
+                    method="transfer",
+                    paid_at=paid_utc
+                )
+                print(f"[211] TX {tx_row.id} actualizada a paid@{paid_utc}")
+            except Exception as e:
+                print(f"[211] Error actualizando tx (paid/transfer con comprobante): {e}")
 
             return {
                 "nodo_destino": 213,
-                "subsiguiente": 0,  
+                "subsiguiente": 0,
                 "conversation_str": new_cs,
-                "response_text": "",
+                "response_text": OK,   
                 "group_id": None,
                 "question_id": None,
                 "result": "Abierta",
             }
+
+
 
         # Adjuntos inválidos
         if retries_count() >= MAX_RETRIES:
