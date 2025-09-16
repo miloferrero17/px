@@ -2,5 +2,7 @@ from app.message_p import handle_incoming_message
 
 if __name__ == "__main__":
     
-    handle_incoming_message("hola", "whatsapp:+5492477661029",  0, "", "","", "","",)
+    handle_incoming_message("Particular", "whatsapp:+5492477661029",  0, "", "","", "","",)
+
+
 

@@ -55,7 +55,8 @@ def log_latency(func):
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
     # 0) Normalizar entradas (None-safe)
-    body = (body or "") + (transcription or "") + (description or "") + (pdf_text or "")
+    #body = (body or "") + (transcription or "") + (description or "") + (pdf_text or "")
+    body = (body or "")
     from datetime import datetime, timezone
 
     numero_limpio = limpiar_numero(to)
@@ -378,21 +379,39 @@ def ejecutar_workflow(variables):
 @log_latency
 def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     import json
-    tx, now_utc = Transactions(), datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+    tx = Transactions()
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
-    # Enviar respuesta
-    mensaje_a_enviar = variables.get("response_text")
+    # 1) Enviar respuesta (si hay)
+    mensaje_a_enviar = variables.get("response_text") or ""
     print(f"[SEND] nodo={variables.get('nodo_destino')} result={variables.get('result')} -> {mensaje_a_enviar!r}")
     if mensaje_a_enviar:
         twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
 
-    # AÑADIR respuesta del asistente al historial ANTES de persistir
-    ch = variables.get("conversation_history", [])
-    ch.append({"role": "assistant", "content": variables.get("response_text", "")})
-    variables["conversation_history"] = ch
-    variables["conversation_str"] = json.dumps(ch)
+    # 2) === Fuente de verdad: conversation_str devuelto por el nodo (incluye metas) ===
+    try:
+        history = json.loads(variables.get("conversation_str") or "[]")
+        if not isinstance(history, list):
+            history = []
+    except Exception:
+        history = []
 
-    # Persistir conversación sleta
+    # Evitar duplicado: si el último ya es el mismo assistant, no lo volvemos a agregar
+    if mensaje_a_enviar:
+        tail = history[-1] if history else {}
+        tail_is_same = (
+            isinstance(tail, dict)
+            and tail.get("role") == "assistant"
+            and (tail.get("content") or "") == mensaje_a_enviar
+        )
+        if not tail_is_same:
+            history.append({"role": "assistant", "content": mensaje_a_enviar})
+
+    # Sincronizar variables para próximos nodos/turnos
+    variables["conversation_history"] = history
+    variables["conversation_str"] = json.dumps(history)
+
+    # 3) Persistir conversación y estado de la transacción
     open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
     estado = "Cerrada" if variables.get("result") == "Cerrada" else "Abierta"
 
@@ -401,7 +420,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         contact_id=contacto.contact_id,
         phone=variables["numero_limpio"],
         name=estado,
-        conversation=variables["conversation_str"],
+        conversation=variables["conversation_str"],  # <- guardamos lo que armó el nodo (con metas)
         timestamp=now_utc,
         event_id=event_id
     )
@@ -409,7 +428,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     if estado == "Cerrada":
         twilio.send_whatsapp_message("Fin de la consulta. Gracias!", to, None)
 
-    # Guardar última pregunta / salida del bot (como hacías antes)
+    # 4) Log en tabla messages (igual que antes)
     Messages().add(
         msg_key=variables.get("nodo_destino"),
         text=variables.get("response_text"),
@@ -418,5 +437,6 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         question_id=variables.get("question_id", 0),
         event_id=event_id
     )
+
 
 

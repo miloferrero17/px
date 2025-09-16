@@ -215,10 +215,10 @@ class Transactions(BaseModel):
             return 0
         ultima_tx = txs[-1]
         return 1 if ultima_tx.name == "Cerrada" else 0
+    
     def get_open_pending_transaction_by_contact_id(self, contact_id: int):
         """
-        Devuelve la última transacción del contacto que está Abierta (name='Abierta')
-        y con status de cobro ('pending', 'to_collect', 'no_copay').
+        Última transacción del contacto con name='Abierta' y status en ('pending','to_collect','no_copay').
         """
         txs = self.get_by_contact_id(contact_id)
         if not txs:
@@ -230,5 +230,91 @@ class Transactions(BaseModel):
         ]
         return candidatas[-1] if candidatas else None
 
+    def get_last_abierta_by_contact_id(self, contact_id: int):
+        """
+        #Fallback: trae la última fila con name='Abierta' (sin importar status).
+        """
+        txs = self.get_by_contact_id(contact_id)
+        if not txs:
+            return None
+        abiertas = [tx for tx in txs if getattr(tx, "name", None) == "Abierta"]
+        return abiertas[-1] if abiertas else None
+    
 
-   
+
+    def get_open_row(self, contact_id: int) -> Optional[TransactionsRegister]:
+        """
+        Devuelve la transacción 'activa' del contacto:
+        1) prioriza name='Abierta' con status en ('pending','to_collect','no_copay')
+        2) si no hay, trae la última name='Abierta' (cualquier status)
+        """
+        row = self.get_open_pending_transaction_by_contact_id(contact_id)
+        if row:
+            return row
+        return self.get_last_abierta_by_contact_id(contact_id)
+
+    def get_open_tx_id(self, contact_id: int) -> Optional[int]:
+        """
+        Id de la TX activa (ver get_open_row).
+        """
+        row = self.get_open_row(contact_id)
+        return row.id if row else None
+
+    def get_expected_amount(self, contact_id: int) -> Optional[float]:
+        """
+        Monto esperado de la TX activa. Útil en el nodo que valida comprobante.
+        """
+        row = self.get_open_row(contact_id)
+        if not row:
+            return None
+        try:
+            return float(getattr(row, "amount", None)) if getattr(row, "amount", None) is not None else None
+        except Exception:
+            return None
+
+    def safe_update(
+        self,
+        contact_id: int,
+        *,
+        amount: Optional[float] = None,
+        currency: Optional[str] = None,
+        status: Optional[str] = None,
+        method: Optional[str] = None,
+        paid_at: Optional[str] = None,
+        payment_reference: Optional[str] = None,
+    ) -> bool:
+        """
+        Actualiza campos en la TX activa del contacto.
+        Devuelve True si se pudo actualizar, False si no hay TX abierta.
+        No pisa campos que vengan como None.
+        """
+        row = self.get_open_row(contact_id)
+        if not row:
+            return False
+
+        kwargs = {}
+        if amount is not None:
+            kwargs["amount"] = amount
+        if currency is not None:
+            kwargs["currency"] = currency
+        if status is not None:
+            kwargs["status"] = status
+        if method is not None:
+            kwargs["method"] = method
+        if paid_at is not None:
+            kwargs["paid_at"] = paid_at
+        if payment_reference is not None:
+            kwargs["payment_reference"] = payment_reference
+
+        if not kwargs:
+            return True  # nada que actualizar, pero la TX existe
+
+        try:
+            self.update(id=row.id, **kwargs)
+            return True
+        except Exception as e:
+            print(f"[Transactions.safe_update] Error actualizando TX {row.id}: {e}")
+            return False
+
+
+

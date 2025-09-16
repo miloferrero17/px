@@ -5,9 +5,9 @@ from app.Model.validators import validate
 from app.Model.enums import DataType
 from app.Model.field import Field
 from app.Model.exceptions import ValidationError, MissingUniqueFieldError
-
+"""
 def get_fields_and_params(data: Dict[str, Field], for_update: bool = False) -> Tuple[List[str], List[Any]]:
-    """
+    
     Extrae los campos y parámetros de un diccionario de datos.
 
     Valida cada campo y su valor, asegurándose de que cumplan con los criterios de validación.
@@ -22,7 +22,7 @@ def get_fields_and_params(data: Dict[str, Field], for_update: bool = False) -> T
 
     :raises ValidationError: Si algún campo no cumple con los criterios de validación o si no hay suficientes datos.
     :raises MissingUniqueFieldError: Si for_update es True y no se encuentra un campo UNIQUE en los datos.
-    """
+    
     fields: List[str] = []
     params: List[Any] = []
     has_unique_value = False
@@ -46,6 +46,48 @@ def get_fields_and_params(data: Dict[str, Field], for_update: bool = False) -> T
         raise ValidationError("No hay suficientes datos.")
 
     return fields, params
+"""
+from typing import List, Any, Dict, Tuple
+from enum import Enum
+from app.Model.validators import validate
+
+def get_fields_and_params(data: Dict[str, Any], for_update: bool = False) -> Tuple[List[str], List[Any]]:
+    """
+    - INSERT (for_update=False): incluye todos los campos válidos (pueden ser None si el campo es opcional).
+    - UPDATE (for_update=True): **solo** incluye campos cuyo value NO es None (para no sobrescribir con NULL).
+    """
+    fields: List[str] = []
+    params: List[Any] = []
+
+    for field, field_obj in data.items():
+        val = getattr(field_obj, "value", None)
+        optional = getattr(field_obj, "optional", False)
+        dtype = getattr(field_obj, "data_type", None)
+
+        # Validación general
+        is_valid = validate(val, dtype, optional)
+
+        if for_update:
+            # En UPDATE: omitimos claves con None para no enviar null al backend
+            if val is None:
+                continue
+            if not is_valid:
+                continue
+            fields.append(f"{field} = %s")
+            params.append(val.value if isinstance(val, Enum) else val)
+        else:
+            # INSERT: permitimos None si el campo es opcional
+            if not is_valid and not (optional and val is None):
+                continue
+            fields.append(field)
+            params.append(val.value if isinstance(val, Enum) else val)
+
+    if not fields:
+        from app.Model.exceptions import ValidationError
+        raise ValidationError("No hay suficientes datos.")
+
+    return fields, params
+
 
 def snake_to_camel(snake_str: str) -> str:
     """
