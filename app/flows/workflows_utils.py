@@ -54,31 +54,26 @@ def fmt_amount(a: NumberLike) -> str:
 
 def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[float]:
     """
-    Calcula el copago según obra/plan.
-    - Normaliza obra y plan.
-    - Intenta por (obra, plan) y luego por (obra) a secas.
-    - Devuelve float o None si no hay dato/ocurre un error.
-    - Para 'PARTICULAR' fuerza plan 'UNICO'.
+    Calcula el copago según cobertura.
+    - Mantiene la firma (plan se ignora en DB).
+    - Para 'PARTICULAR' intenta buscar por nombre; si no hay dato, devuelve None.
     """
     obra_norm = deaccent_upper(obra_txt or "")
-    plan_n = plan_norm(plan_txt or "")
+    _ = plan_norm(plan_txt or "")  # se mantiene por compatibilidad / logs
 
     cv = Coverages()
     try:
         if obra_norm == "PARTICULAR":
-            amt = cv.get_amount_by_name_and_plan("PARTICULAR", "UNICO")
-            if amt is None:
-                amt = cv.get_amount_by_name("PARTICULAR")
+            amt = cv.get_amount_by_name("PARTICULAR")
             return float(amt) if amt is not None else None
 
-        amt = cv.get_amount_by_name_and_plan(obra_norm, plan_n)
-        if amt is None:
-            amt = cv.get_amount_by_name(obra_norm)
+        amt = cv.get_amount_by_name(obra_norm)  # <-- SOLO 1 argumento
         return float(amt) if amt is not None else None
 
     except Exception as e:
         print(f"[utils.calc_amount] Error Coverages: {e}")
         return None
+
 
 def parse_amount_ars(v: NumberLike) -> Optional[float]:
     """

@@ -21,8 +21,8 @@ class Coverages(BaseModel):
     Modelo para la tabla 'coverages':
     - id (bigserial PK)
     - name (text)
-    - plan (text)
-    - amount (numeric 12,2)  -- 0 = sin copago; >0 = copago o precio particular
+    - coverage_type (text)  -- OOSS | Prepaga | Mutual
+    - amount (numeric 12,2) -- 0 = sin copago; >0 = copago o precio particular
     - active (bool)
     - updated_at (timestamptz)
     """
@@ -31,6 +31,7 @@ class Coverages(BaseModel):
         data: Dict[str, Field] = {
             "id":         Field(None, DataType.INTEGER,  False, True),
             "name":       Field(None, DataType.STRING,   False, False),   # antes: nombre
+            "coverage_type":  Field(None, DataType.STRING,   False, False),
             "plan":       Field(None, DataType.STRING,   False, False),
             "amount":     Field(None, getattr(DataType, "NUMBER", DataType.STRING),   False, False),   # antes: monto
             "active":     Field(None, getattr(DataType, "BOOLEAN", DataType.STRING),  False, False),   # antes: activo
@@ -40,7 +41,7 @@ class Coverages(BaseModel):
         self.__data = data
 
     # ---------- Lecturas ----------
-        # --- Normalización interna (evita repetir en nodos) ---
+     # --- Normalización interna (evita repetir en nodos) ---
 
 # ... dentro de class Coverages:
 
@@ -67,36 +68,21 @@ class Coverages(BaseModel):
                 return None
 
     def get_by_name_exact(self, name: str) -> Optional[CoverageRegister]:
-        """Match por name, tolerante a mayúsculas/acentos. Prioriza activos."""
+        """Match por name, tolerante a mayúsculas/acentos. Prioriza activos (vía REST de BaseModel)."""
         try:
             name_n = self._norm_name(name)
 
-            # 1) Intento con ILIKE (case-insensitive) si el cliente lo soporta
-            try:
-                resp = (
-                    self._db.table(self._table_name)
-                    .select("*")
-                    .ilike("name", name_n)   # sin % => igualdad case-insensitive
-                    .limit(1)
-                    .execute()
-                )
-                data = getattr(resp, "data", None) or (resp[1] if isinstance(resp, tuple) else None)
-                if data:
-                    row = data[0]
-                    return CoverageRegister(**row)
-            except Exception:
-                pass
-
-            # 2) Fallback: scan de activos y comparación normalizada en Python
+            # Único camino: traer activos y comparar normalizado en Python
             rows = self.list_active()
             for r in rows:
-                _name = (r.__dict__.get("name") if isinstance(r, CoverageRegister) else getattr(r, "name", None)) or getattr(r, "name", "") or ""
+                _name = (r.__dict__.get("name") if isinstance(r, CoverageRegister) else getattr(r, "name", "")) or ""
                 if self._norm_name(_name) == name_n:
                     return r
 
             return None
         except Exception as e:
             raise DatabaseError(f"[coverages.get_by_name_exact] {e}")
+
 
     def find_by_name(self, name: str) -> Optional[CoverageRegister]:
         """Exacto (tolerante) y si no, substring normalizado sobre activos."""
@@ -124,56 +110,27 @@ class Coverages(BaseModel):
 
     def get_amount_by_name_and_plan(self, name: str, plan: str) -> Optional[float]:
         """
-        Devuelve amount (float) buscando por (name, plan) activo.
-        Fallback 1: ILIKE.
-        Fallback 2: match normalizado en Python.
-        Fallback 3: solo name.
+        DEPRECATED/ON-HOLD: 'plan' ya no existe en la tabla.
+        Mantiene la firma por compatibilidad pero ignora 'plan' y busca sólo por 'name'.
         """
         try:
-            name_n = self._norm_name(name)
-            plan_n = self._norm_plan(plan)
-
-            # 1) Intento directo con ILIKE
-            try:
-                resp = (
-                    self._db.table(self._table_name)
-                    .select("name,plan,amount,active")
-                    .ilike("name", name_n)
-                    .ilike("plan", plan_n)
-                    .eq("active", True)
-                    .limit(1)
-                    .execute()
-                )
-                data = getattr(resp, "data", None) or (resp[1] if isinstance(resp, tuple) else None)
-                if data and len(data) > 0:
-                    return self._to_float(data[0].get("amount"))
-            except Exception:
-                pass
-
-            # 2) Fallback: recorrer activos y comparar normalizado
-            rows = self.list_active()
-            for r in rows:
-                rname = (r.__dict__.get("name") if isinstance(r, CoverageRegister) else getattr(r, "name", "")) or ""
-                rplan = (r.__dict__.get("plan") if isinstance(r, CoverageRegister) else getattr(r, "plan", "")) or ""
-                if self._norm_name(rname) == name_n and self._norm_plan(rplan) == plan_n:
-                    rval = r.__dict__.get("amount") if isinstance(r, CoverageRegister) else getattr(r, "amount", None)
-                    return self._to_float(rval)
-
-            # 3) Último recurso: por nombre solamente
-            return self.get_amount_by_name(name_n)
+            return self.get_amount_by_name(name)
         except Exception as e:
-            raise DatabaseError(f"Error in get_amount_by_name_and_plan: {e}")
+            raise DatabaseError(f"Error in get_amount_by_name_and_plan (on-hold): {e}")
 
 
 
 
     def list_active(self) -> List[CoverageRegister]:
         try:
-            rows = super().get("active", True)
-            rows = rows or []
+            rows = super().get("active", True) or []
+            # BaseModel.get devuelve objetos *Register; si viniera dict, lo normalizamos
             return [CoverageRegister(**r) if isinstance(r, dict) else r for r in rows]
         except Exception as e:
             raise DatabaseError(f"[coverages.list_active] {e}")
+
+
+
         
     
 
@@ -182,24 +139,32 @@ class Coverages(BaseModel):
 
     # ---------- Escrituras ----------
 
-    def upsert(self, name: str, amount: float, plan: str = "UNICO", active: bool = True) -> None:
+    def upsert(self, name: str, amount: float, plan: str = "UNICO",
+            coverage_type: Optional[str] = None, active: bool = True) -> None:
         """
-        Inserta/actualiza por (name, plan). Requiere índice único en DB (name, plan).
+        Inserta/actualiza por 'name'. 'plan' queda on-hold (no se persiste).
+        Requiere UNIQUE(name) en DB para on_conflict='name'.
         """
         try:
-            payload = {"name": name, "plan": plan, "amount": float(amount), "active": bool(active)}
-            self._db.table(self._table_name).upsert(payload, on_conflict="name,plan").execute()
+            payload = {"name": name, "amount": float(amount), "active": bool(active)}
+            if coverage_type is not None:
+                payload["coverage_type"] = coverage_type
+            super().upsert(payload, on_conflict="name")
         except Exception as e:
             raise DatabaseError(f"[coverages.upsert] {e}")
 
 
+    from urllib.parse import quote  # arriba del archivo si no lo tenés
+    import requests                 # arriba del archivo si no lo tenés
+
     def deactivate(self, name: str, plan: Optional[str] = None) -> None:
-        """Desactiva una cobertura por name (y plan si se provee)."""
+        """Desactiva por name. 'plan' on-hold (no se usa)."""
         try:
-            q = self._db.table(self._table_name).update({"active": False}).eq("name", name)
-            if plan is not None:
-                q = q.eq("plan", plan)
-            q.execute()
+            url = f"{self.base_url}?name=eq.{quote(name)}"
+            r = requests.patch(url, headers=self.headers, json={"active": False}, timeout=10)
+            if r.status_code >= 400:
+                raise DatabaseError(f"HTTP {r.status_code}: {r.text}")
         except Exception as e:
             raise DatabaseError(f"[coverages.deactivate] {e}")
+
 

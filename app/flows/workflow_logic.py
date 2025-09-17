@@ -351,7 +351,7 @@ def nodo_203(variables):
         "Vas a hacerle " + max_preguntas_str + " preguntas con el objetivo de diagnosticarlo medicamente.\n"
         "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
         "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos).\n"
-        "Contestame UNICAMENTE con la pregunta; que no incluya dos preguntas en una; sin números y sin comillas. Agregá exactamente 1 emoji neutral de objeto al FINAL de la oración  "
+        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas. Agregá exactamente 1 emoji neutral de objeto al FINAL de la oración  "
     "No uses emojis de caras, manos, corazones, fiesta, fuego ni “100”, ni ningún emoji que exprese emociones u opiniones (p. ej.: 🙂, 😟, 👍, 👎, ❤️, 🎉, 🔥, 💯). "
     
     )
@@ -401,7 +401,7 @@ MESSAGES = {
         "No pude validar tu cobertura. Probemos de nuevo: enviá una *captura o PDF* de la credencial.\n"
         "Si no tenés, escribí: *Particular*."
     ),
-    "COVERAGE_FAIL": "*No pudimos validar tu cobertura.*",
+    "COVERAGE_FAIL": "No pudimos validar tu cobertura. Acercate a admisión para recibir ayuda.",
 
     # 208 confirmación
     "CONFIRM_HEADER": "Revisá y confirmá tus datos:\n\n",
@@ -431,7 +431,7 @@ MESSAGES = {
     "PAYMENT_RETRY": "*No pude validar tu elección.* Probemos de nuevo:\n"
                      "enviá la *captura o PDF* del comprobante o escribí *Otros*.",
     "PAYMENT_FAIL": "*No pudimos validar el medio de pago elegido.*",
-    "PAYMENT_OTHERS_ACK": "Preferís pagar con *otros medios de pago*.",
+    "PAYMENT_OTHERS_ACK": "Preferís pagar con otros medios de pago. Acercate a admisión para recibir ayuda.",
 
 
 
@@ -440,7 +440,7 @@ MESSAGES = {
     "RECEIPT_OK": "✅ Recibimos tu comprobante.",
     "RECEIPT_RETRY": "*No pude validar tu comprobante.* Probemos de nuevo: enviá una *captura o PDF*. "
                      "Si preferís otro medio de pago, escribí *Otros*.",
-    "RECEIPT_FAIL": "*No pudimos validar tu comprobante.*",
+    "RECEIPT_FAIL": "No pudimos validar tu comprobante. Acercate a admisión para recibir ayuda.",
     
     "OTHERS_MENU": (
         "💵 Para abonar con efectivo, escribí “Efectivo”.\n"  #ahora no se usa
@@ -562,7 +562,7 @@ def nodo_207(variables):
                 "response_text": FAIL,
                 "group_id": None,
                 "question_id": None,
-                "result": "Abierta",
+                "result": "Cerrada",
             }
         hist_add_meta(history, META_FLAG)
         history.append({"role": "assistant", "content": RETRY})
@@ -624,7 +624,7 @@ def nodo_207(variables):
                 "response_text": TO_HUMAN,
                 "group_id": None,
                 "question_id": None,
-                "result": "Abierta",
+                "result": "Cerrada",
             }
         hist_add_meta(history, META_FLAG)
         history.append({"role": "assistant", "content": RETRY})
@@ -984,7 +984,7 @@ def nodo_209(variables):
             "response_text": "",
             "group_id": None,
             "question_id": None,
-            "result": "Abierta",
+            "result": "Cerrada",
         }
 
     # ========== 1) Enviar mensajes de pago SOLO la primera vez ==========
@@ -1051,7 +1051,7 @@ def nodo_209(variables):
                 "response_text": OTHERS_ACK,
                 "group_id": None,
                 "question_id": None,
-                "result": "Abierta",
+                "result": "Cerrada",
             }
 
         # "efectivo" (incluimos sinónimos más comunes)
@@ -1076,7 +1076,7 @@ def nodo_209(variables):
                 "response_text": OTHERS_ACK,
                 "group_id": None,
                 "question_id": None,
-                "result": "Abierta",
+                "result": "Cerrada",
             }
 
         # "tarjeta" (crédito/débito)
@@ -1101,7 +1101,7 @@ def nodo_209(variables):
                 "response_text": TO_HUMAN,
                 "group_id": None,
                 "question_id": None,
-                "result": "Abierta",
+                "result": "Cerrada",
             }
 
     # 2.b) Adjuntos analizados desde el history
@@ -1135,7 +1135,7 @@ def nodo_209(variables):
             "response_text": PAYMENT_FAIL,
             "group_id": None,
             "question_id": None,
-            "result": "Abierta",
+            "result": "Cerrada",
         }
 
     hist_add_meta(history, META_ATTEMPT)
@@ -1253,11 +1253,32 @@ def nodo_210(variables):
     m_raw = data.get("monto")
     comp_amount = parse_amount_ars(m_raw)
     comp_local  = receipt_datetime_ba(dia, hora)  # aware BA
-
+    try:
+        print("[210] extracted", {"dia": dia, "hora": hora, "dest": dest, "m_raw": m_raw, "comp_amount": comp_amount, "comp_local": str(comp_local)})
+    except Exception as e:
+        print(f"[210] debug error al loguear extracted: {e}")
+    
+    
     # 3) Datos esperados: monto + fecha creación de la TX abierta
     tx_row = tx.get_open_row(contacto.contact_id)
     if not tx_row:
         return _save(212, 1, history, TO_HUMAN, abierta=False)
+
+    # DEBUG: TX abierta recuperada
+    try:
+        print(
+            "[210] open_tx",
+            "id=", getattr(tx_row, "id", None),
+            "amount=", getattr(tx_row, "amount", None),
+            "type(amount)=", type(getattr(tx_row, "amount", None)).__name__,
+            "status=", getattr(tx_row, "status", None),
+            "data_created=", getattr(tx_row, "data_created", None),
+        )
+    except Exception as e:
+        print(f"[210] debug error al loguear tx_row: {e}, tx_row={tx_row}")
+
+
+
 
     try:
         expected_amount = float(getattr(tx_row, "amount", None)) if getattr(tx_row, "amount", None) is not None else None
@@ -1269,6 +1290,21 @@ def nodo_210(variables):
         return _save(212, 1, history, TO_HUMAN, abierta=False)
 
     tx_created_ba_date = tx_created_utc.astimezone(BA_TZ).date()
+
+    # DEBUG: comparación de montos (+ tipos)
+    try:
+        print(
+            "[210] amounts",
+            {
+                "comp_amount": comp_amount,
+                "type(comp_amount)": type(comp_amount).__name__,
+                "expected_amount": expected_amount,
+                "type(expected_amount)": type(expected_amount).__name__,
+                "eq2dec": amounts_equal_2dec(comp_amount, expected_amount),
+            }
+        )
+    except Exception as e:
+        print(f"[210] debug error al loguear amounts: {e}")
 
     # 4) Validaciones
     ok = True
