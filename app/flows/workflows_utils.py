@@ -32,6 +32,28 @@ def deaccent_upper(s: Optional[str]) -> str:
     s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
     s = re.sub(r"\s+", " ", s).strip().upper()
     return s
+# === Normalización fuerte para matching de nombres de cobertura ===
+import re
+import unicodedata
+
+def norm_key_alnum_upper(s: str) -> str:
+    """
+    Clave CANÓNICA para matching:
+    - NFD sin diacríticos (á/ñ/ü -> a/n/u)
+    - Solo ASCII
+    - Remueve TODO lo no alfanumérico (incluye espacios, guiones, NBSP, etc.)
+    - MAYÚSCULAS
+    Ej.: "Prevención Salud" -> "PREVENCIONSALUD"
+    """
+    if not s:
+        return ""
+    s = s.replace("\u00A0", " ")                       # NBSP -> espacio normal (por si aparece)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # quita diacríticos
+    s = "".join(ch for ch in s if ch.isascii())                        # descarta no-ASCII
+    s = re.sub(r"[^A-Za-z0-9]+", "", s)                               # deja solo A-Z0-9
+    return s.upper()
+
 
 def plan_norm(s: Optional[str]) -> str:
     """
@@ -51,7 +73,7 @@ def fmt_amount(a: NumberLike) -> str:
         return f"{float(a):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "-"
-
+'''
 def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[float]:
     """
     Calcula el copago según cobertura.
@@ -68,6 +90,40 @@ def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[fl
             return float(amt) if amt is not None else None
 
         amt = cv.get_amount_by_name(obra_norm)  # <-- SOLO 1 argumento
+        return float(amt) if amt is not None else None
+
+    except Exception as e:
+        print(f"[utils.calc_amount] Error Coverages: {e}")
+        return None
+    '''
+# Asegurate de tener importado el helper nuevo:
+# from <tu_modulo_utils> import norm_key_alnum_upper, plan_norm  # ajustá el path si hace falta
+
+def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[float]:
+    """
+    Calcula el copago según cobertura.
+    - Usa clave canónica (sin tildes ni separadores) para matchear robusto.
+    - Mantiene fallback a la búsqueda por nombre existente.
+    """
+    obra_key = Coverages._norm_key(obra_txt or "")
+    _ = plan_norm(plan_txt or "")  # se mantiene por compatibilidad / logs
+
+    cv = Coverages()
+    try:
+        # Caso particular explícito
+        if obra_key == "PARTICULAR":
+            amt = cv.get_amount_by_name("PARTICULAR")
+            return float(amt) if amt is not None else None
+
+        # 1) NUEVO: intento por clave canónica (lo implementamos en el Cambio 3)
+        amt = cv.get_amount_by_key(obra_key)
+        if amt is not None:
+            return float(amt)
+
+        # 2) Fallback: tu lógica actual por nombre normalizado “humano”
+        # (no tocamos tus datos ni comportamiento preexistente)
+        human_name = deaccent_upper(obra_txt or "")
+        amt = cv.get_amount_by_name(human_name)
         return float(amt) if amt is not None else None
 
     except Exception as e:

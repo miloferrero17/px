@@ -427,7 +427,7 @@ MESSAGES = {
         "Si preferís otro medio de pago, escribí “Otros”."
     ),
     "PAYMENT_2": "Nuestro alias es:",
-    "PAYMENT_3": "PACIENTEX.CLINICA.GUARDIA",
+    "PAYMENT_3": "PACIENTEX.GUARDIA",
     "PAYMENT_RETRY": "*No pude validar tu elección.* Probemos de nuevo:\n"
                      "enviá la *captura o PDF* del comprobante o escribí *Otros*.",
     "PAYMENT_FAIL": "*No pudimos validar el medio de pago elegido.*",
@@ -456,7 +456,6 @@ MESSAGES = {
 
     }
 
-
 def nodo_207(variables):
     """
     207 - Pide credencial de OOSS/prepaga o detecta 'particular'.
@@ -467,6 +466,8 @@ def nodo_207(variables):
       - Máx 2 reintentos; al agotar → 212 (admisión).
       - NO toca transactions; solo setea variables["coverage_draft"].
     """
+    from app.Model.coverages import Coverages
+
     import json, re
     import app.services.brain as brain
     from app.flows.workflows_utils import (
@@ -610,6 +611,19 @@ def nodo_207(variables):
     plan = (data.get("plan") or "").strip()
     afiliado = (data.get("afiliado") or "").strip()
     token = (data.get("token") or "").strip()
+    
+    # ---- DEBUG DIAGNÓSTICO (no altera la lógica) ----
+    try:
+        obra_key_dbg = Coverages._norm_key(obra)
+    except Exception as _e:
+        obra_key_dbg = f"<error_norm_key: {type(_e).__name__}>"
+
+    # extract_input puede ser largo; mostramos hasta 300 chars
+    _preview = (extract_input[:300] + "…") if extract_input and len(extract_input) > 300 else extract_input
+    print("[207][DEBUG] extract_input:", _preview)
+    print("[207][DEBUG] parsed -> obra:", repr(obra), "| afiliado:", repr(afiliado))
+    print("[207][DEBUG] obra_key:", obra_key_dbg)
+
 
     # Validación mínima para avanzar por OOSS/prepaga (tu regla: si falta afiliado, cuenta reintento)
     if not obra or not afiliado:
@@ -671,6 +685,7 @@ def nodo_208(variables):
     """
     import json, re
     import app.Model.enums as enums
+    from app.Model.coverages import Coverages
 
 
     from app.flows.workflows_utils import (
@@ -749,10 +764,27 @@ def nodo_208(variables):
     user_said_particular = bool(re.search(r"\bparticular\b", body_norm))
     history_was_particular = (obra_from_confirm.upper() == "PARTICULAR")
 
+    # ---- DEBUG: estado de entrada ----
+    print("[208][DEBUG] body_raw:", repr(body_raw))
+    print("[208][DEBUG] flags -> is_yes:", is_yes(body_raw), "| is_no:", is_no(body_raw),
+        "| user_said_particular:", user_said_particular, "| history_was_particular:", history_was_particular)
+    print("[208][DEBUG] draft -> obra_d:", repr(obra_d), "| plan_d:", repr(plan_d), "| afiliado:", repr(afiliado))
+    print("[208][DEBUG] from_confirm -> obra:", repr(obra_from_confirm), "| plan:", repr(plan_from_confirm))
+    # ----------------------------------
+
     # =====================================================================
     # 1) SI / NO — SIEMPRE antes que cualquier otra cosa
     # =====================================================================
-    if is_yes(body_raw) or is_no(body_raw):
+    #if is_yes(body_raw) or is_no(body_raw):
+    yes_no_strict = False
+    if body_raw:
+        # usamos el normalizado que ya tenés
+        bn = body_norm  # viene de norm_text(body_raw)
+        if len(bn) <= 6:
+            # acepta "si", "sí", "no" con opcionales espacios/puntuación alrededor
+            yes_no_strict = bool(re.match(r'^\s*(si|sí|no)\s*[.!¡?]*\s*$', bn, flags=re.IGNORECASE))
+
+    if yes_no_strict:
         if not parsed_confirm:
             # No hay confirmación previa para interpretar el SI/NO -> humano
             return _save(212, 1, history, TO_HUMAN, abierta=False)
@@ -762,6 +794,13 @@ def nodo_208(variables):
         plan_txt  = (plan_from_confirm or plan_d or "UNICO").strip()
         plan_n    = plan_norm(plan_txt)
         amount    = calc_amount(obra_txt, plan_n)
+
+        try:
+            obra_key_dbg = Coverages._norm_key(obra_txt)
+        except Exception as _e:
+            obra_key_dbg = f"<norm_key_err:{type(_e).__name__}>"
+        print("[208][DEBUG][SI/NO] obra_txt:", repr(obra_txt), "| plan_n:", plan_n,
+            "| obra_key:", obra_key_dbg, "| amount:", amount)
 
         if is_yes(body_raw):
             # contacts
@@ -809,6 +848,7 @@ def nodo_208(variables):
             variables["payment_info"] = {
                 "obra": obra_txt, "plan": plan_n, "amount": float(amount)
             }
+            print("[208][DEBUG][SI] -> next=209 (pago), amount:", amount)
             return {
                 "nodo_destino": 209,
                 "subsiguiente": 0,
@@ -825,6 +865,8 @@ def nodo_208(variables):
             return _save(212, 1, history, TO_HUMAN, abierta=False)
         hist_add_meta(history, META_FLAG)
         history.append({"role": "assistant", "content": ASK_CREDENTIAL})
+        print("[208][DEBUG][NO] attempts:", attempts + 1, "| max:", MAX_RETRIES)
+
         return _save(207, 1, history, ASK_CREDENTIAL)
 
     # =====================================================================
@@ -834,6 +876,9 @@ def nodo_208(variables):
         obra_txt = "PARTICULAR"
         plan_n = "UNICO"
         amount = calc_amount(obra_txt, plan_n)
+        print("[208][DEBUG][PARTICULAR] amount:", amount)
+        if amount is None:
+            print("[208][DEBUG][PARTICULAR] amount=None -> salto a 212")
 
         # contacts
         try:
@@ -883,7 +928,22 @@ def nodo_208(variables):
     obra_txt = (obra_d or "Particular").strip()
     plan_txt = (plan_d or "UNICO").strip()
     plan_n   = plan_norm(plan_txt)
+
+    try:
+        obra_key_dbg = Coverages._norm_key(obra_txt)
+    except Exception as _e:
+        obra_key_dbg = f"<norm_key_err:{type(_e).__name__}>"
+
     amount   = calc_amount(obra_txt, plan_n)
+
+    
+    print("[208][DEBUG][CONFIRM] obra_txt:", repr(obra_txt), "| plan_n:", plan_n,
+        "| obra_key:", obra_key_dbg, "| amount:", amount)
+    if amount is None:
+        print("[208][DEBUG][CONFIRM] amount=None -> FOOT_NO_COVER; si usuario responde SI, irá a 212")
+
+
+
 
     if amount is None:
         footer = FOOT_NO_COVER

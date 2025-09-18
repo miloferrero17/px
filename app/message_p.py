@@ -63,9 +63,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     WELCOME_MSG = (
     "👋 Hola, soy el asistente de PX Salud.\n\n"
-
-    "Para empezar necesito verificar tu identidad.\n"
-    "✍️ Por favor, escribí el DNI de la persona que necesita atención médica."
+    "Para comenzar, por favor escribí el DNI de quien necesita atención médica."
 )
 
 

@@ -54,6 +54,23 @@ class Coverages(BaseModel):
     def _norm_plan(plan: str) -> str:
         s = ''.join(c for c in unicodedata.normalize('NFD', plan or '') if unicodedata.category(c) != 'Mn')
         return (re.sub(r'\s+', '', s).strip().upper()) or 'UNICO'
+    @staticmethod
+    def _norm_key(name: str) -> str:
+        """
+        Clave canónica:
+        - NFD sin diacríticos
+        - Solo ASCII
+        - Quita todo lo no alfanumérico (incluye espacios)
+        - Upper
+        """
+        if not name:
+            return ""
+        s = name.replace("\u00A0", " ")
+        s = unicodedata.normalize("NFD", s)
+        s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+        s = "".join(ch for ch in s if ch.isascii())
+        s = re.sub(r"[^A-Za-z0-9]+", "", s)
+        return s.upper()
 
     @staticmethod
     def _to_float(val):
@@ -66,6 +83,25 @@ class Coverages(BaseModel):
                 return float(str(val).replace(',', '.'))
             except Exception:
                 return None
+            
+    def get_amount_by_key(self, key: str) -> Optional[float]:
+        """
+        Busca en list_active() comparando la clave canónica.
+        No requiere modificar registros en DB.
+        """
+        try:
+            if not key:
+                return None
+            rows = self.list_active()
+            for r in rows:
+                raw_name = (r.__dict__.get("name") if hasattr(r, "__dict__") else getattr(r, "name", "")) or ""
+                if self._norm_key(raw_name) == key:
+                    val = r.__dict__.get("amount") if hasattr(r, "__dict__") else getattr(r, "amount", None)
+                    return self._to_float(val)
+            return None
+        except Exception as e:
+            raise DatabaseError(f"[coverages.get_amount_by_key] {e}")
+
 
     def get_by_name_exact(self, name: str) -> Optional[CoverageRegister]:
         """Match por name, tolerante a mayúsculas/acentos. Prioriza activos (vía REST de BaseModel)."""
@@ -85,21 +121,32 @@ class Coverages(BaseModel):
 
 
     def find_by_name(self, name: str) -> Optional[CoverageRegister]:
-        """Exacto (tolerante) y si no, substring normalizado sobre activos."""
+        """Match robusto por KEY; si falla, usa tu matching anterior (exacto/substring normalizado)."""
         try:
+            rows = self.list_active()
+
+            # 1) Match exacto por KEY (fuerte, tolerante a tildes/espacios/símbolos)
+            key = self._norm_key(name)
+            if key:
+                for r in rows:
+                    raw_name = (r.__dict__.get("name") if hasattr(r, "__dict__") else getattr(r, "name", "")) or ""
+                    if self._norm_key(raw_name) == key:
+                        return r
+
+            # 2) Tu lógica original
             exact = self.get_by_name_exact(name)
             if exact:
                 return exact
 
-            rows = self.list_active()
             needle = self._norm_name(name)
             for r in rows:
-                _name = (r.__dict__.get("name") if isinstance(r, CoverageRegister) else getattr(r, "name", "")) or ""
+                _name = (r.__dict__.get("name") if hasattr(r, "__dict__") else getattr(r, "name", "")) or ""
                 if needle in self._norm_name(_name):
                     return r
             return None
         except Exception as e:
             raise DatabaseError(f"[coverages.find_by_name] {e}")
+
 
     def get_amount_by_name(self, name: str) -> Optional[float]:
         reg = self.find_by_name(name)
