@@ -2,6 +2,8 @@ from typing import Optional, List, Dict
 from app.Model.enums import DataType
 from app.Model.base_model import BaseModel, TransactionsRegister
 from app.Model.field import Field
+from datetime import datetime, timezone, timedelta
+import hashlib
 
 class Transactions(BaseModel):
     def __init__(self):
@@ -26,6 +28,12 @@ class Transactions(BaseModel):
             "receipt_url": Field(None, DataType.STRING, True, False),        # por ahora NULL
             "paid_at": Field(None, DataType.TIMESTAMP, True, False),         # timestamptz
             "payment_reference": Field(None, DataType.STRING, True, True),
+
+
+            "question_cursor": Field(None, DataType.INTEGER, False, False),     # contador de preguntas (por sesión)
+            "last_question_fingerprint": Field(None, DataType.STRING, True, False),  # hash sha256 de la última pregunta
+            "last_question_sent_at": Field(None, DataType.TIMESTAMP, True, False),   # timestamptz del último envío
+
         }
         super().__init__("transactions", fields)
         # Exponer los campos para facilitar su uso
@@ -259,6 +267,112 @@ class Transactions(BaseModel):
         """
         row = self.get_open_row(contact_id)
         return row.id if row else None
+    
+    # === Preguntas / Sherlock state ===
+    def get_question_state(self, contact_id: int):
+        """
+        Devuelve (cursor:int, last_fp:str|None, last_sent_at:str|None) de la TX abierta del contacto.
+        Si no hay TX abierta, retorna (0, None, None).
+        """
+        row = self.get_open_row(contact_id)
+        if not row:
+            return 0, None, None
+        cursor = int(getattr(row, "question_cursor", 0) or 0)
+        last_fp = getattr(row, "last_question_fingerprint", None)
+        last_sent_at = getattr(row, "last_question_sent_at", None)
+        return cursor, last_fp, last_sent_at
+
+    @staticmethod
+    def sha256_text(text: str) -> str:
+        return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _now_iso_utc() -> str:
+        # ISO con microsegundos compatible con tu update actual
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    def register_question_attempt_by_contact(
+        self,
+        contact_id: int,
+        *,
+        fingerprint: str,
+        debounce_seconds: int = 90
+    ):
+        """
+        Idempotencia + debounce por TX ABIERA del contact_id.
+        Retorna (status, cursor):
+          - status: "new" | "resend" | "skip" | "no_tx"
+          - cursor: valor final de question_cursor tras la operación
+        Reglas:
+          • Si fingerprint != último → incrementa cursor, set fp y sent_at → "new"
+          • Si fingerprint == último:
+               - si pasaron >= debounce → solo actualiza sent_at → "resend"
+               - si no → no hace nada → "skip"
+          • Si no hay TX abierta → "no_tx", 0
+        """
+        row = self.get_open_row(contact_id)
+        if not row:
+            return "no_tx", 0
+
+        current_cursor = int(getattr(row, "question_cursor", 0) or 0)
+        last_fp = getattr(row, "last_question_fingerprint", None)
+        last_sent_at = getattr(row, "last_question_sent_at", None)
+        now_iso = self._now_iso_utc()
+
+        # Caso: pregunta nueva
+        if (last_fp or "") != (fingerprint or ""):
+            new_cursor = current_cursor + 1
+            try:
+                self.update(
+                    id=row.id,
+                    contact_id=row.contact_id,
+                    phone=row.phone,
+                    name=getattr(row, "name", "Abierta"),
+                    event_id=getattr(row, "event_id", None),
+                    # solo los 3 campos + timestamp
+                    # (tu update es parcial: solo setea lo que no es None)
+                )
+                # Ahora setear nuestros 3 campos
+                self.data["question_cursor"].value = new_cursor
+                self.data["last_question_fingerprint"].value = fingerprint
+                self.data["last_question_sent_at"].value = now_iso
+                self.data["timestamp"].value = now_iso
+                super().update("id", row.id)
+            except Exception as e:
+                print(f"[Transactions.register_question_attempt_by_contact] error NEW en TX {row.id}: {e}")
+            return "new", new_cursor
+
+        # Caso: mismo fingerprint → posible retry
+        # parse last_sent_at (puede venir None)
+        last_dt = None
+        if last_sent_at:
+            try:
+                last_dt = datetime.fromisoformat(str(last_sent_at).replace("Z", "+00:00"))
+            except Exception:
+                last_dt = None
+
+        should_resend = True
+        if last_dt:
+            should_resend = (datetime.now(timezone.utc) - last_dt) >= timedelta(seconds=debounce_seconds)
+
+        if should_resend:
+            try:
+                self.update(
+                    id=row.id,
+                    contact_id=row.contact_id,
+                    phone=row.phone,
+                    name=getattr(row, "name", "Abierta"),
+                    event_id=getattr(row, "event_id", None),
+                )
+                self.data["last_question_sent_at"].value = now_iso
+                self.data["timestamp"].value = now_iso
+                super().update("id", row.id)
+            except Exception as e:
+                print(f"[Transactions.register_question_attempt_by_contact] error RESEND en TX {row.id}: {e}")
+            return "resend", current_cursor
+
+        return "skip", current_cursor
+
 
     def get_expected_amount(self, contact_id: int) -> Optional[float]:
         """

@@ -310,7 +310,6 @@ def nodo_203(variables):
     import json
     import app.services.brain as brain
     import app.services.twilio_service as twilio
-    import builtins
 
     tx = variables["tx"]
     ctt = variables["ctt"]
@@ -320,19 +319,23 @@ def nodo_203(variables):
 
     sender_number = "whatsapp:+" + numero_limpio
     contacto = ctt.get_by_phone(numero_limpio)
+    contact_id = getattr(contacto, "contact_id", None)
+
     #print(variables["conversation_str"])
-    conversation_str = variables["conversation_str"]
+    conversation_str = variables.get("conversation_str") or "[]"
     conversation_history = json.loads(conversation_str) if conversation_str else []
 
     event_id = ctt.get_event_id_by_phone(numero_limpio)
-    question_id = msj.get_penultimate_question_id_by_phone(numero_limpio)
-    question_id = question_id + 1 if question_id is not None else 1
 
-    max_preguntas = builtins.int(ev.get_cant_preguntas_by_event_id(event_id))
-    max_preguntas_str = builtins.str(max_preguntas)
-    question_id_str = builtins.str(question_id)
+    # Reemplazo: usar cursor desde transactions
+    cursor, last_fp, last_sent_at = tx.get_question_state(contact_id)
+    question_id = cursor + 1
 
-    if question_id_str == "1":
+    max_preguntas = int(ev.get_cant_preguntas_by_event_id(event_id))
+    max_preguntas_str = str(max_preguntas)
+    question_id_str = str(question_id)
+
+    if cursor == 0:
         mensaje_intro = "Por los sintomas que planteas voy a necesitar hacerte " + max_preguntas_str + " preguntas para entender mejor que te anda pasando ."
         twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
 
@@ -362,14 +365,32 @@ def nodo_203(variables):
             "content":mensaje_def_triage_str
         }]
 
-    '''
-    conversation_history.append({
-        "role": "assistant",
-        "content": mensaje_def_triage
-    })
-    '''
-    result = brain.ask_openai(mensaje_def_triage)
-    response_text = question_id_str + "/" + max_preguntas_str + " - " + result
+
+     # 1) Generar texto de la pregunta (sin prefijo)
+    pregunta = (brain.ask_openai(mensaje_def_triage) or "").strip()
+
+    # 2) Fingerprint solo del texto de la pregunta
+    fingerprint = tx.sha256_text(pregunta)
+
+    # 3) Registrar intento en la TX (idempotencia + debounce 90s)
+    status, new_cursor = tx.register_question_attempt_by_contact(
+        contact_id,
+        fingerprint=fingerprint,
+        debounce_seconds=90,
+    )
+
+    # 4) Ajustar numeración visible
+    if status == "new":
+        question_id = new_cursor
+        question_id_str = str(question_id)
+    else:
+        question_id = max(question_id, new_cursor or 0)
+        question_id_str = str(question_id)
+
+    # 5) Componer texto final (solo en new/resend)
+    prefijo = f"{question_id_str}/{max_preguntas_str} - "
+    response_text = prefijo + pregunta if status in ("new", "resend") else ""
+
 
     return {
         "nodo_destino": 203,
@@ -415,7 +436,7 @@ MESSAGES = {
         "¿Los datos son correctos? SI/NO"
     ),
     "CONFIRM_FOOTER_COPAY": "Copago a abonar: ${monto} 💵",
-    "CONFIRM_FOOTER_NO_COPAY": "No hay copago.",
+    "CONFIRM_FOOTER_NO_COPAY": " ",
     "CONFIRM_FOOTER_NO_COVERAGE" : "Esta cobertura no se encuentra dentro de las obras sociales o prepagas con convenio.",
 
 
