@@ -331,14 +331,5 @@ def names_match_flexible(expected: str, got: str) -> bool:
     matched = len(e & g)
     return matched >= min(2, len(e))
 
-# --- Feature flags -----------------------------------------------------------
-import os
-
-def triage_only() -> bool:
-    """
-    Devuelve True si estamos en modo 'solo triage' (no pasar por 207–211).
-    Se activa por variable de entorno TRIAGE_ONLY=true.
-    """
-    return os.getenv("TRIAGE_ONLY", "false").lower() in ("1", "true", "yes", "y")
 
 

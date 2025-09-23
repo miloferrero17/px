@@ -16,7 +16,6 @@ provider:
     TWILIO_AUTH_TOKEN: ${env:TWILIO_AUTH_TOKEN}
     TWILIO_WHATSAPP_NUMBER: ${env:TWILIO_WHATSAPP_NUMBER}
     PINECONE_API_KEY: ${env:PINECONE_API_KEY}
-    TRIAGE_ONLY: ${env:TRIAGE_ONLY, 'false'}
   iamRoleStatements:
     - Effect: "Allow"
       Action:
