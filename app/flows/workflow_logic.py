@@ -268,6 +268,7 @@ def nodo_202(variables):
     import app.services.brain as brain
     import app.services.twilio_service as twilio
     import json
+    from app.flows.workflows_utils import triage_only
 
     ctt = variables["ctt"]
     ev = variables["ev"]
@@ -293,11 +294,24 @@ def nodo_202(variables):
     variables["conversation_history"] = conversation_history
     variables["conversation_str"] = json.dumps(conversation_history)
 
+    # MODO TRIAGE-ONLY: cerrar acá, sin ir a 207–211, ni mandar mensajes extra
+    if triage_only():
+        return {
+            "nodo_destino": 202,                 # nos quedamos aquí
+            "subsiguiente": 1,                   # sin pasos automáticos siguientes
+            "conversation_str": variables["conversation_str"],
+            "response_text": "",                 # ya enviamos el reporte por Twilio
+            "group_id": None,
+            "question_id": None,
+            "result": "Cerrada",
+        }
+
+    # Flujo normal (sin flag): continuar como antes hacia 207
     return {
         "nodo_destino": 207,
-        "subsiguiente": 0,  # (igual que antes) continuar a 207 en el mismo ciclo
+        "subsiguiente": 0,                       # continuar a 207 en el mismo ciclo
         "conversation_str": variables["conversation_str"],
-        "response_text": "",  # ✅ NUEVO: vacío para que el handler no lo pise/duplique
+        "response_text": "",                     # evitar duplicados
         "group_id": None,
         "question_id": None,
         "result": "Abierta"
