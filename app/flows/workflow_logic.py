@@ -6,12 +6,12 @@ def ejecutar_nodo(nodo_id, variables):
         204: nodo_204,
         205: nodo_205,
         206: nodo_206,
-        207: nodo_207,   # credencial / particular / extracción
-        208: nodo_208,   # confirmación SI/NO + seteo TX + routing
-        209: nodo_209,   # pago: instrucciones + comandos + comprobante->210
-        210: nodo_210,   # análisis de comprobante (validaciones)
-        211: nodo_211,   # lista de espera
-        212: nodo_212,   # admisión (humano)
+        #207: nodo_207,   # credencial / particular / extracción
+        #208: nodo_208,   # confirmación SI/NO + seteo TX + routing
+        #209: nodo_209,   # pago: instrucciones + comandos + comprobante->210
+        #210: nodo_210,   # análisis de comprobante (validaciones)
+        #211: nodo_211,   # lista de espera
+        #212: nodo_212,   # admisión (humano)
     }
     try:
         return NODOS[nodo_id](variables)
@@ -294,16 +294,15 @@ def nodo_202(variables):
     variables["conversation_str"] = json.dumps(conversation_history)
 
 
-    # Flujo normal (sin flag): continuar como antes hacia 207
     return {
-        "nodo_destino": 207,
-        "subsiguiente": 0,                       # continuar a 207 en el mismo ciclo
-        "conversation_str": variables["conversation_str"],
-        "response_text": "",                     # evitar duplicados
-        "group_id": None,
-        "question_id": None,
-        "result": "Abierta"
-    }
+    "nodo_destino": 202,     # quedarse aquí
+    "subsiguiente": 1,       # sin pasos automáticos siguientes
+    "conversation_str": variables["conversation_str"],
+    "response_text": "",     # el reporte ya se envió por Twilio
+    "group_id": None,
+    "question_id": None,
+    "result": "Cerrada",
+}
 
 def nodo_203(variables):
     """
@@ -410,7 +409,7 @@ def nodo_203(variables):
 # ========================= =========================
 
 
-
+'''
 # =========================
 # Mensajes centralizados
 # =========================
@@ -1484,3 +1483,4 @@ def nodo_212(variables):
     }
 
 
+'''
