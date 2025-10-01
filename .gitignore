@@ -28,3 +28,5 @@ tmp/
 *.log
 *.out
 *.tmp
+
+node_modules/
