@@ -21,14 +21,6 @@ class Transactions(BaseModel):
             "data_created": Field(None, DataType.TIMESTAMP, False, False),  # timestamp de creación
 
 
-            "amount": Field(None, DataType.FLOAT, True, False),              # double precision
-            "currency": Field(None, DataType.STRING, True, False),           # ej. "ARS"
-            "status": Field(None, DataType.STRING, True, False),             # pending | paid | to_collect | no_copay | failed
-            "method": Field(None, DataType.STRING, True, False),             # transfer | cash | card
-            "receipt_url": Field(None, DataType.STRING, True, False),        # por ahora NULL
-            "paid_at": Field(None, DataType.TIMESTAMP, True, False),         # timestamptz
-            "payment_reference": Field(None, DataType.STRING, True, True),
-
 
             "question_cursor": Field(None, DataType.INTEGER, False, False),     # contador de preguntas (por sesión)
             "last_question_fingerprint": Field(None, DataType.STRING, True, False),  # hash sha256 de la última pregunta
@@ -51,13 +43,7 @@ class Transactions(BaseModel):
         comentario: Optional[str] = None,
         data_created: Optional[str] = None,
 
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        status: Optional[str] = None,
-        method: Optional[str] = None,
-        receipt_url: Optional[str] = None,
-        paid_at: Optional[str] = None,
-        payment_reference: Optional[str] = None,
+
     ) -> int:
         # Inicializa el id en None para auto-incrementar
         self.data["id"].value = None
@@ -72,13 +58,6 @@ class Transactions(BaseModel):
         self.data["data_created"].value = data_created
 
 
-        self.data["amount"].value = amount
-        self.data["currency"].value = currency
-        self.data["status"].value = status
-        self.data["method"].value = method
-        self.data["receipt_url"].value = receipt_url
-        self.data["paid_at"].value = paid_at
-        self.data["payment_reference"].value = payment_reference
 
         return super().add()
 
@@ -134,13 +113,7 @@ class Transactions(BaseModel):
         puntuacion: Optional[int] = None,
         comentario: Optional[str] = None,
 
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        status: Optional[str] = None,
-        method: Optional[str] = None,
-        receipt_url: Optional[str] = None,
-        paid_at: Optional[str] = None,
-        payment_reference: Optional[str] = None
+
 
 
     ) -> None:
@@ -164,27 +137,14 @@ class Transactions(BaseModel):
         if comentario is not None:
             self.data["comentario"].value = comentario
 
-        
-        if amount is not None:
-            self.data["amount"].value = amount
-        if currency is not None:
-            self.data["currency"].value = currency
-        if status is not None:
-            self.data["status"].value = status
-        if method is not None:
-            self.data["method"].value = method
-        if receipt_url is not None:
-            self.data["receipt_url"].value = receipt_url
-        if paid_at is not None:
-            self.data["paid_at"].value = paid_at
-        if payment_reference is not None:
-            self.data["payment_reference"].value = payment_reference
 
         # Llama a la actualización usando 'id' como clave única
         super().update("id", id)
 
     def delete(self, id: int) -> None:
         super().delete("id", id)
+
+ # --------- Estado “abierta” (sin cobranzas) ----------
 
     def get_last_transaction_by_event_and_phone(
         self, event_id: int, phone: str
@@ -224,19 +184,7 @@ class Transactions(BaseModel):
         ultima_tx = txs[-1]
         return 1 if ultima_tx.name == "Cerrada" else 0
     
-    def get_open_pending_transaction_by_contact_id(self, contact_id: int):
-        """
-        Última transacción del contacto con name='Abierta' y status en ('pending','to_collect','no_copay').
-        """
-        txs = self.get_by_contact_id(contact_id)
-        if not txs:
-            return None
-        candidatas = [
-            tx for tx in txs
-            if getattr(tx, "name", None) == "Abierta"
-            and getattr(tx, "status", None) in ("pending", "to_collect", "no_copay")
-        ]
-        return candidatas[-1] if candidatas else None
+
 
     def get_last_abierta_by_contact_id(self, contact_id: int):
         """
@@ -252,13 +200,8 @@ class Transactions(BaseModel):
 
     def get_open_row(self, contact_id: int) -> Optional[TransactionsRegister]:
         """
-        Devuelve la transacción 'activa' del contacto:
-        1) prioriza name='Abierta' con status en ('pending','to_collect','no_copay')
-        2) si no hay, trae la última name='Abierta' (cualquier status)
+        Devuelve la transacción 'activa' del contacto: última con name='Abierta'.
         """
-        row = self.get_open_pending_transaction_by_contact_id(contact_id)
-        if row:
-            return row
         return self.get_last_abierta_by_contact_id(contact_id)
 
     def get_open_tx_id(self, contact_id: int) -> Optional[int]:
@@ -356,79 +299,56 @@ class Transactions(BaseModel):
             should_resend = (datetime.now(timezone.utc) - last_dt) >= timedelta(seconds=debounce_seconds)
 
         if should_resend:
-            try:
-                self.update(
-                    id=row.id,
-                    contact_id=row.contact_id,
-                    phone=row.phone,
-                    name=getattr(row, "name", "Abierta"),
-                    event_id=getattr(row, "event_id", None),
-                )
-                self.data["last_question_sent_at"].value = now_iso
-                self.data["timestamp"].value = now_iso
-                super().update("id", row.id)
-            except Exception as e:
-                print(f"[Transactions.register_question_attempt_by_contact] error RESEND en TX {row.id}: {e}")
-            return "resend", current_cursor
+            # Política nueva: no reenviar ni tocar DB ante duplicados.
+            return "skip", current_cursor
 
         return "skip", current_cursor
 
-
-    def get_expected_amount(self, contact_id: int) -> Optional[float]:
-        """
-        Monto esperado de la TX activa. Útil en el nodo que valida comprobante.
-        """
-        row = self.get_open_row(contact_id)
-        if not row:
-            return None
-        try:
-            return float(getattr(row, "amount", None)) if getattr(row, "amount", None) is not None else None
-        except Exception:
-            return None
-
-    def safe_update(
+    def set_question_zero(
         self,
         contact_id: int,
         *,
-        amount: Optional[float] = None,
-        currency: Optional[str] = None,
-        status: Optional[str] = None,
-        method: Optional[str] = None,
-        paid_at: Optional[str] = None,
-        payment_reference: Optional[str] = None,
-    ) -> bool:
+        fingerprint: str
+    ):
         """
-        Actualiza campos en la TX activa del contacto.
-        Devuelve True si se pudo actualizar, False si no hay TX abierta.
-        No pisa campos que vengan como None.
+        Registra la 'pregunta 0' SIN incrementar question_cursor.
+        Reglas:
+          • Si no hay TX abierta → ("no_tx", cursor_actual)
+          • Si fingerprint == último → ("skip0", cursor_actual)  [no toca DB]
+          • Si fingerprint != último → set fp y sent_at → ("new0", cursor_actual)
         """
         row = self.get_open_row(contact_id)
         if not row:
-            return False
+            return "no_tx", 0
 
-        kwargs = {}
-        if amount is not None:
-            kwargs["amount"] = amount
-        if currency is not None:
-            kwargs["currency"] = currency
-        if status is not None:
-            kwargs["status"] = status
-        if method is not None:
-            kwargs["method"] = method
-        if paid_at is not None:
-            kwargs["paid_at"] = paid_at
-        if payment_reference is not None:
-            kwargs["payment_reference"] = payment_reference
+        current_cursor = int(getattr(row, "question_cursor", 0) or 0)
+        last_fp = getattr(row, "last_question_fingerprint", None)
 
-        if not kwargs:
-            return True  # nada que actualizar, pero la TX existe
+        # Si es el mismo fingerprint, no re-enviamos ni tocamos sent_at
+        if (last_fp or "") == (fingerprint or ""):
+            return "skip0", current_cursor
 
+        now_iso = self._now_iso_utc()
         try:
-            self.update(id=row.id, **kwargs)
-            return True
+            # update parcial para no pisar otros campos
+            self.update(
+                id=row.id,
+                contact_id=row.contact_id,
+                phone=row.phone,
+                name=getattr(row, "name", "Abierta"),
+                event_id=getattr(row, "event_id", None),
+            )
+            # setear SOLO fp y sent_at (sin mover cursor)
+            self.data["last_question_fingerprint"].value = fingerprint
+            self.data["last_question_sent_at"].value = now_iso
+            self.data["timestamp"].value = now_iso
+            super().update("id", row.id)
         except Exception as e:
-            print(f"[Transactions.safe_update] Error actualizando TX {row.id}: {e}")
-            return False
+            print(f"[Transactions.set_question_zero] error TX {row.id}: {e}")
+
+        return "new0", current_cursor
+
+
 
 
 

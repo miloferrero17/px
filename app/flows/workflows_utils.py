@@ -1,11 +1,10 @@
 # app/flows/workflows_utils.py
 import re, unicodedata, json
-from typing import Optional, Union
-from app.Model.coverages import Coverages
+from typing import Optional
+
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-NumberLike = Union[float, int, str, None]
 
 # ========= Constantes reutilizables =========
 BA_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -32,128 +31,10 @@ def deaccent_upper(s: Optional[str]) -> str:
     s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
     s = re.sub(r"\s+", " ", s).strip().upper()
     return s
-# === Normalización fuerte para matching de nombres de cobertura ===
-import re
-import unicodedata
-
-def norm_key_alnum_upper(s: str) -> str:
-    """
-    Clave CANÓNICA para matching:
-    - NFD sin diacríticos (á/ñ/ü -> a/n/u)
-    - Solo ASCII
-    - Remueve TODO lo no alfanumérico (incluye espacios, guiones, NBSP, etc.)
-    - MAYÚSCULAS
-    Ej.: "Prevención Salud" -> "PREVENCIONSALUD"
-    """
-    if not s:
-        return ""
-    s = s.replace("\u00A0", " ")                       # NBSP -> espacio normal (por si aparece)
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # quita diacríticos
-    s = "".join(ch for ch in s if ch.isascii())                        # descarta no-ASCII
-    s = re.sub(r"[^A-Za-z0-9]+", "", s)                               # deja solo A-Z0-9
-    return s.upper()
 
 
-def plan_norm(s: Optional[str]) -> str:
-    """
-    Plan en MAYÚSCULAS sin espacios internos (p.ej., ' 210  ' -> '210', 'Ú nico' -> 'UNICO').
-    """
-    s = (s or "").strip()
-    s = re.sub(r"\s+", "", s)
-    s = deaccent_upper(s)
-    return s or "UNICO"
 
 # --------- Monto / Formato ---------
-def fmt_amount(a: NumberLike) -> str:
-    """
-    Formatea a '1.234,56' (coma decimal). Si no puede, devuelve '-'.
-    """
-    try:
-        return f"{float(a):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except Exception:
-        return "-"
-'''
-def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[float]:
-    """
-    Calcula el copago según cobertura.
-    - Mantiene la firma (plan se ignora en DB).
-    - Para 'PARTICULAR' intenta buscar por nombre; si no hay dato, devuelve None.
-    """
-    obra_norm = deaccent_upper(obra_txt or "")
-    _ = plan_norm(plan_txt or "")  # se mantiene por compatibilidad / logs
-
-    cv = Coverages()
-    try:
-        if obra_norm == "PARTICULAR":
-            amt = cv.get_amount_by_name("PARTICULAR")
-            return float(amt) if amt is not None else None
-
-        amt = cv.get_amount_by_name(obra_norm)  # <-- SOLO 1 argumento
-        return float(amt) if amt is not None else None
-
-    except Exception as e:
-        print(f"[utils.calc_amount] Error Coverages: {e}")
-        return None
-    '''
-# Asegurate de tener importado el helper nuevo:
-# from <tu_modulo_utils> import norm_key_alnum_upper, plan_norm  # ajustá el path si hace falta
-
-def calc_amount(obra_txt: Optional[str], plan_txt: Optional[str]) -> Optional[float]:
-    """
-    Calcula el copago según cobertura.
-    - Usa clave canónica (sin tildes ni separadores) para matchear robusto.
-    - Mantiene fallback a la búsqueda por nombre existente.
-    """
-    obra_key = Coverages._norm_key(obra_txt or "")
-    _ = plan_norm(plan_txt or "")  # se mantiene por compatibilidad / logs
-
-    cv = Coverages()
-    try:
-        # Caso particular explícito
-        if obra_key == "PARTICULAR":
-            amt = cv.get_amount_by_name("PARTICULAR")
-            return float(amt) if amt is not None else None
-
-        # 1) NUEVO: intento por clave canónica (lo implementamos en el Cambio 3)
-        amt = cv.get_amount_by_key(obra_key)
-        if amt is not None:
-            return float(amt)
-
-        # 2) Fallback: tu lógica actual por nombre normalizado “humano”
-        # (no tocamos tus datos ni comportamiento preexistente)
-        human_name = deaccent_upper(obra_txt or "")
-        amt = cv.get_amount_by_name(human_name)
-        return float(amt) if amt is not None else None
-
-    except Exception as e:
-        print(f"[utils.calc_amount] Error Coverages: {e}")
-        return None
-
-
-def parse_amount_ars(v: NumberLike) -> Optional[float]:
-    """
-    Parsea montos en ARS desde string o número.
-    Acepta $ y ARS, separadores de miles y coma decimal.
-    """
-    if v is None:
-        return None
-    if isinstance(v, (int, float)):
-        try:
-            return float(v)
-        except Exception:
-            return None
-    s = str(v)
-    t = s.replace("ARS", "").replace("$", "").strip()
-    t = re.sub(r"[^\d,.\-]", "", t)
-    if "," in t and "." in t:
-        t = t.replace(".", "").replace(",", ".")
-    elif "," in t:
-        t = t.replace(",", ".")
-    try:
-        return float(t)
-    except Exception:
-        return None
 
 def names_match(expected: str, got: str) -> bool:
     """
@@ -186,13 +67,7 @@ def is_today_not_future(dt_ba: Optional[datetime]) -> bool:
     now = datetime.now(BA_TZ)
     return (dt_ba.date() == now.date()) and (dt_ba <= now)
 
-def amounts_equal_2dec(a: Optional[float], b: Optional[float]) -> bool:
-    """
-    Compara montos redondeando a 2 decimales; None falla.
-    """
-    if a is None or b is None:
-        return False
-    return round(float(a), 2) == round(float(b), 2)
+
 
 # ========= Historial (stateless) ============================================
 def hist_load(conversation_str: str) -> list:
