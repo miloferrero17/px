@@ -424,6 +424,16 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
     if estado == "Cerrada":
         twilio.send_whatsapp_message("Fin de la consulta. Gracias!", to, None)
+        
+        try:
+            Messages().add(
+                msg_key=variables.get("nodo_destino"),
+                text="Fin de la consulta. Gracias!",
+                phone=variables["numero_limpio"],
+                event_id=event_id
+            )
+        except Exception as e:
+            print(f"[MSG LOG] cierre: {e}")
 
     # 4) Log en tabla messages (igual que antes)
     Messages().add(

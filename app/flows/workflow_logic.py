@@ -200,8 +200,6 @@ def nodo_205(variables):
             response_text = ""
     
 
-    
-    
     return {
         "nodo_destino": 201,
         "subsiguiente": 1,
@@ -259,6 +257,7 @@ def nodo_202(variables):
     """
     import app.services.brain as brain
     import app.services.twilio_service as twilio
+    from app.Model.messages import Messages
     import json
 
     ctt = variables["ctt"]
@@ -267,6 +266,11 @@ def nodo_202(variables):
 
     sender_number = "whatsapp:+" + numero_limpio
     twilio.send_whatsapp_message("Estoy pensando, dame unos segundos...", sender_number, None)
+
+    try:
+        Messages().add(msg_key=202, text="Estoy pensando, dame unos segundos...", phone=numero_limpio, event_id=ctt.get_event_id_by_phone(numero_limpio))
+    except Exception as e:
+        print(f"[MSG LOG] nodo_202 thinking: {e}")
 
     conversation_history = variables["conversation_history"]
 
@@ -279,6 +283,11 @@ def nodo_202(variables):
 
     # enviar el reporte ahora, antes de saltar a 207
     twilio.send_whatsapp_message(response_text, sender_number, None)
+
+    try:
+        Messages().add(msg_key=202, text=response_text, phone=numero_limpio, event_id=event_id)
+    except Exception as e:
+        print(f"[MSG LOG] nodo_202 reporte: {e}")
 
     # guardar el reporte en el historial
     conversation_history.append({"role": "assistant", "content": response_text})
@@ -303,6 +312,7 @@ def nodo_203(variables):
     import json
     import app.services.brain as brain
     import app.services.twilio_service as twilio
+    from app.Model.messages import Messages 
 
     tx = variables["tx"]
     ctt = variables["ctt"]
@@ -331,6 +341,11 @@ def nodo_203(variables):
     if cursor == 0:
         mensaje_intro = "Por los sintomas que planteas voy a necesitar hacerte " + max_preguntas_str + " preguntas para entender mejor que te anda pasando ."
         twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
+        
+        try:
+            Messages().add(msg_key=203, text=mensaje_intro, phone=numero_limpio, event_id=event_id)
+        except Exception as e:
+            print(f"[MSG LOG] nodo_203 intro: {e}")
 
     if question_id > max_preguntas:
         return {
