@@ -192,22 +192,19 @@ def nodo_205(variables):
     """
     Nodo ¿Que te trae a la guardia?
     """
-    #import app.services.twilio_service as twilio
-    #import app.services.brain as brain
-    #numero_limpio = variables["numero_limpio"]
-    #sender_number = "whatsapp:+" + numero_limpio
-    #body = variables.get("body", "").strip().lower()
-    #twilio.send_whatsapp_message(body, sender_number, None)
-
-    '''
-    mensaje_credential = [{
-        "role": "system",
-        "content":"Extraé de este texto el UNICAMENTE el primer nombre con únicamente la primera letra mayúscula: "+body
-    }]'''
-    
-    #result1 = brain.ask_openai(mensaje_credential)
-    #response_text = (result1 + ": ¿Que te trae a la guardia?" )
     response_text = "¿Qué te trae a la guardia? \n\n💬Podés responder con texto, foto o audio y sumar todos los detalles que consideres útiles."
+
+    tx = variables["tx"]
+    contacto = variables.get("contacto")
+    contact_id = getattr(contacto, "contact_id", None)
+
+    if contact_id:
+        fingerprint = tx.sha256_text(response_text)
+        status0, _ = tx.set_question_zero(contact_id, fingerprint=fingerprint)
+        if status0 == "skip0":
+            response_text = ""
+    
+
     
     
     return {
@@ -216,7 +213,7 @@ def nodo_205(variables):
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
         "group_id": None,
-        "question_id": None,
+        "question_id": 0,
         "result": "Abierta"
     }
 
@@ -390,7 +387,7 @@ def nodo_203(variables):
 
     # 5) Componer texto final (solo en new/resend)
     prefijo = f"{question_id_str}/{max_preguntas_str} - "
-    response_text = prefijo + pregunta if status in ("new", "resend") else ""
+    response_text = prefijo + pregunta if status == "new" else ""
 
 
     return {
