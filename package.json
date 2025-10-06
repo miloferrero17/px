@@ -4,5 +4,26 @@
     "serverless-plugin-provisioned-concurrency": "^0.3.2",
     "serverless-python-requirements": "^6.1.2",
     "serverless-wsgi": "^3.1.0"
-  }
+  },
+  "name": "px",
+  "version": "1.0.0",
+  "description": "Motor conversacional basado en GPT-4, diseñado para ejecutar tareas rápidas, responder automáticamente y operar en modo WhatsApp. Soporta múltiples modos de interacción y lógica dinámica definida por el usuario.",
+  "main": "index.js",
+  "dependencies": {
+    "yocto-queue": "^1.2.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/miloferrero17/px.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/miloferrero17/px/issues"
+  },
+  "homepage": "https://github.com/miloferrero17/px#readme"
 }

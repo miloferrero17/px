@@ -386,6 +386,7 @@ def generar_medical_digest(conversation_str: str, national_id: Optional[str]) ->
     bold = lambda t: f"*{t}*"
 
     blocks = [
+        bold("Resumen Médico"),
         f"{bold('DNI:')} {dni}",
         urgency_line,
         f"{bold('Motivo de consulta:')} {values['chief_complaint']}",

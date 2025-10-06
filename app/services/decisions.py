@@ -29,6 +29,33 @@ def calcular_diferencia_en_minutos(transacciones, numero_limpio: str) -> Optiona
     diferencia = (t2 - t1).total_seconds() / 60
     return diferencia - 120
 
+def calcular_diferencia_desde_info(info) -> Optional[float]:
+    """
+    Misma lógica que calcular_diferencia_en_minutos, pero usando un dict
+    ya leído de DB: {"id": ..., "name": ..., "timestamp": <iso str>}
+    """
+    if not info or not info.get("timestamp"):
+        return None
+
+    from dateutil.parser import isoparse
+    from datetime import datetime, timezone, timedelta
+
+    timestamp_str = str(info["timestamp"])
+    try:
+        t1 = isoparse(timestamp_str)
+    except Exception as e:
+        print(f"[TTL] parse error (info): {timestamp_str} - {e}")
+        return None
+
+    if t1.tzinfo is None:
+        t1 = t1.replace(tzinfo=timezone(timedelta(hours=5)))  # igual que antes
+
+    t1 = t1 + timedelta(hours=3)  # ajuste adicional (igual que antes)
+    t2 = datetime.now(timezone.utc)
+    diferencia = (t2 - t1).total_seconds() / 60
+    return diferencia - 120  # mismo offset que tu función original
+
+
 def ejecutar_codigo_guardado(codigo_crudo: str, variables: dict):
     try:
         if "\\n" in codigo_crudo:

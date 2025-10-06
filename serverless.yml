@@ -1,5 +1,5 @@
 service: px
-
+useDotenv: true 
 provider:
   name: aws
   runtime: python3.9
@@ -9,6 +9,7 @@ provider:
   stage: ${opt:stage, 'dev'}
   environment:
     ENV: ${opt:stage, 'dev'}
+    PX_ENV: ${opt:stage, 'dev'}
     OPENAI_API_KEY: ${env:OPENAI_API_KEY}
     SUPABASE_URL: ${env:SUPABASE_URL}
     SUPABASE_API_KEY: ${env:SUPABASE_API_KEY}

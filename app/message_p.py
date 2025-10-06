@@ -31,7 +31,7 @@ import app.services.brain as brain
 import app.services.uploader as uploader
 import app.services.decisions as decs
 #import app.services.embedding as vector
-from app.services.decisions import next_node_fofoca_sin_logica, limpiar_numero, calcular_diferencia_en_minutos,ejecutar_codigo_guardado
+from app.services.decisions import next_node_fofoca_sin_logica, limpiar_numero, calcular_diferencia_en_minutos,ejecutar_codigo_guardado, calcular_diferencia_desde_info
 
 entorno = os.getenv("ENV", "undefined")
 
@@ -41,21 +41,43 @@ import functools
 from app.Model.medical_digests import MedicalDigests
 from app.flows.workflows_utils import generar_medical_digest
 
-
-
-
+PX_ENV = os.getenv("PX_ENV") or os.getenv("ENV") or "dev"
 
 def log_latency(func):
-   @functools.wraps(func)
-   def wrapper(*args, **kwargs):
-       start = time.perf_counter()
-       result = func(*args, **kwargs)
-       end = time.perf_counter()
-       duration_ms = (end - start) * 1000
-       print(f"[LATENCIA] {func.__name__} tomó {duration_ms:.2f} ms")
-       return result
-   return wrapper
-
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        t0 = time.perf_counter()
+        status = "OK"
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            status = "ERROR"
+            # Log de error estructurado
+            print(json.dumps({
+                "ts": int(time.time() * 1000),
+                "env": PX_ENV,
+                "service": "engine",
+                "version": "v1",
+                "provider": "engine",
+                "operation": func.__name__,
+                "status": status,
+                "error": str(e),
+            }, ensure_ascii=False))
+            raise
+        finally:
+            dur = int((time.perf_counter() - t0) * 1000)
+            # Log de latencia estructurado
+            print(json.dumps({
+                "ts": int(time.time() * 1000),
+                "env": PX_ENV,
+                "service": "engine",
+                "version": "v1",
+                "provider": "engine",
+                "operation": func.__name__,
+                "status": status,
+                "latency_ms": dur,
+            }, ensure_ascii=False))
+    return wrapper
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
@@ -81,37 +103,40 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     # Contexto base de la sesión
     contexto_agente = ev.get_description_by_event_id(event_id) or ""
     base_context = json.dumps([{"role": "system", "content": contexto_agente}])
-
+    nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
     # TTL del evento (fallback 5)
     TTL_MIN = ev.get_time_by_event_id(event_id) or 5
 
     # 2) Guard de sesión: si corresponde, ENVIAR WELCOME y NO procesar este mensaje
     if message1(tx, numero_limpio, TTL_MIN):
-        twilio.send_whatsapp_message(WELCOME_MSG, to, None)
+        send_whatsapp_with_metrics(
+        WELCOME_MSG, to, None,
+        nodo_id=nodo_inicio,   # ya calculado arriba
+        tx_id=None)             # aún no existe TX nueva
+
 
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-        ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
+        last_info = tx.get_last_tx_info_by_phone(numero_limpio)  # UNA lectura
 
-        # Cerrar TX abierta previa (si existe)
+        # Cerrar TX abierta previa (si existe y está abierta)
         try:
-            if ultima_tx is not None and tx.is_last_transaction_closed(numero_limpio) == 0:
+            if last_info and (last_info.get("name") or "") != "Cerrada":
                 tx.update(
-                    id=ultima_tx["id"],
+                    id=last_info["id"],
                     contact_id=contacto.contact_id,
                     phone=numero_limpio,
                     name="Cerrada",
                     timestamp=now_utc,
-                    event_id=event_id
+                    event_id=event_id,
                 )
         except Exception:
             pass
 
-        # Construir historial con WELCOME incluido
-        contexto_agente = ev.get_description_by_event_id(event_id) or ""
-        history = [
-            {"role": "system",    "content": contexto_agente},
-            {"role": "assistant", "content": WELCOME_MSG},  # <-- guardar el welcome real
-        ]
+
+
+        # Construir historial con WELCOME incluido (reusar base_context y nodo_inicio)
+        history = json.loads(base_context)
+        history.append({"role": "assistant", "content": WELCOME_MSG})
         conversation_json = json.dumps(history)
 
         # Abrir TX nueva con el historial que incluye el WELCOME
@@ -121,7 +146,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
                 phone=numero_limpio,
                 name="Abierta",
                 event_id=event_id,
-                conversation=conversation_json,  # <-- ahora incluye system + welcome
+                conversation=conversation_json,  # incluye system + welcome
                 timestamp=now_utc,
                 data_created=now_utc
             )
@@ -130,10 +155,9 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
         # Guardar el WELCOME (no el placeholder) en messages
         try:
-            nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
             msj.add(
-                msg_key=nodo_inicio,
-                text=WELCOME_MSG,  # <-- acá va el welcome real
+                msg_key=nodo_inicio,   # ya calculado arriba
+                text=WELCOME_MSG,
                 phone=numero_limpio,
                 event_id=event_id
             )
@@ -142,10 +166,13 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
         return "Ok"
 
-    # 3) Gestionar sesión y registrar mensaje (ya sabemos que no corresponde WELCOME)
-    msg_key, conversation_str, conversation_history = gestionar_sesion_y_mensaje(
-        contacto, event_id, body, numero_limpio
-    )
+
+    # 3) Gestionar sesión y registrar mensaje
+    msg_key, conversation_str, conversation_history, open_tx_id = gestionar_sesion_y_mensaje(
+    contacto, event_id, body, numero_limpio,
+    nodo_inicio=nodo_inicio,
+    base_context=base_context,)
+
 
     # 4) Manejo de adjuntos SOLO si NO estamos en consentimiento (204) ni DNI (206)
     adj_handled = False
@@ -165,7 +192,9 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
             
     # 5) Ejecutar workflow
     variables = inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history)
+    variables["open_tx_id"] = open_tx_id
     variables = ejecutar_workflow(variables)
+
 
     # 6) Enviar respuesta y actualizar transacción
     enviar_respuesta_y_actualizar(variables, contacto, event_id, to)
@@ -173,39 +202,32 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     return "Ok"
 
 
-
-
-
 @log_latency
 def message1(tx, numero_limpio: str, ttl_minutos: int) -> bool:
     """
-    True si corresponde enviar la bienvenida y NO procesar este primer mensaje:
-      - no existe transacción previa, o
-      - la última transacción está cerrada, o
-      - la última transacción está abierta pero vencida según TTL (events.tiempo_sesion).
+    True si corresponde enviar la bienvenida y NO procesar este primer mensaje.
+    Optimizada: usa UNA sola lectura (get_last_tx_info_by_phone) y la helper TTL.
     """
     try:
-        ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
-        if ultima_tx is None:
+        info = tx.get_last_tx_info_by_phone(numero_limpio)
+        if info is None:
+            return True  # primera vez → welcome
+
+        # Si la última TX está Cerrada → welcome
+        if (info.get("name") or "") == "Cerrada":
             return True
 
-        # Cerrada → bienvenida
-        if tx.is_last_transaction_closed(numero_limpio) == 1:
-            return True
-
-        # Abierta: si venció por TTL de Events, bienvenida también
-        try:
-            diff_min = calcular_diferencia_en_minutos(tx, numero_limpio)
-        except Exception:
-            diff_min = None
-
+        # Última abierta → evaluar TTL con la MISMA lógica de siempre
+        diff_min = calcular_diferencia_desde_info(info)
         if diff_min is not None and int(diff_min) > int(ttl_minutos):
             return True
 
         return False
+
     except Exception:
         # en error, evitar spam
         return False
+
 
 
 
@@ -246,49 +268,97 @@ def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcri
     # Otros tipos: no responde
     return False, None, None
 @log_latency
-def obtener_o_crear_contacto(numero_limpio):
+def obtener_o_crear_contacto(numero_limpio, request_id=None, tx_id=None):
+    """
+    Reduce roundtrips a Supabase y emite logs operativos seudonimizados.
+    - Camino "existe": 1 query 
+    - Camino "no existe": 2 queries 
+    - Logs: operation/select/insert con provider=supabase, status y latency_ms
+    - Nunca loguea el teléfono en claro (no PII)
+    """
     ctt = Contacts()
     ev = Events()
     msj = Messages()
 
-    contacto = ctt.get_by_phone(numero_limpio)
-    event_id = 1  
+    def _log(operation, status, t0, http_status=None, error_code=None):
+        evt = {
+            "ts": int(time.time() * 1000),
+            "env": "dev",                    # en prod cambiá a "prod" desde tu código/global
+            "service": "engine",
+            "version": "v1",                 # si tenés tag/commit, ponelo acá
+            "tx_id": tx_id,
+            "request_id": request_id,
+            "operation": operation,
+            "provider": "supabase",
+            "status": status,
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+        }
+        if http_status is not None:
+            evt["http_status"] = http_status
+        if error_code is not None:
+            evt["error_code"] = error_code
+        print(json.dumps({k: v for k, v in evt.items() if v is not None}, ensure_ascii=False))
 
+    # 1) Buscar por phone (solo una vez)
+    t0 = time.perf_counter()
+    try:
+        contacto = ctt.get_by_phone(numero_limpio)
+        _log("select_contact_by_phone", "OK", t0)
+    except Exception as e:
+        _log("select_contact_by_phone", "ERROR", t0, error_code="ERR_SBX_SELECT")
+        raise
 
+    # 2) Si no existe, crear y traer por ID (no volver a get_by_phone)
     if contacto is None:
         event_id = 1  # default
-        contact_id = ctt.add(event_id=event_id, name="Juan", phone=numero_limpio)
-        msg_key = ev.get_nodo_inicio_by_event_id(event_id)
-        msj.add(msg_key=msg_key, text="Nuevo contacto", phone=numero_limpio, event_id=event_id, question_id=0)
-        print("Contacto creado")
-        contacto = ctt.get_by_phone(numero_limpio)
-    else:
-        #  trae el event_id que ya tiene asignado el contacto
-        event_id = ctt.get_event_id_by_phone(numero_limpio) or 1
-        print("Contacto ya existente")
+        t1 = time.perf_counter()
+        try:
+            contact_id = ctt.add(event_id=event_id, name="Juan", phone=numero_limpio)
+            _log("insert_contact", "OK", t1)
+        except Exception as e:
+            _log("insert_contact", "ERROR", t1, error_code="ERR_SBX_UPSERT")
+            raise
 
+        t2 = time.perf_counter()
+        try:
+            contacto = ctt.get_by_id(contact_id)
+            _log("select_contact_by_id", "OK", t2)
+        except Exception as e:
+            _log("select_contact_by_id", "ERROR", t2, error_code="ERR_SBX_SELECT")
+            raise
+
+        # Mensaje y nodo inicial (no genera lecturas extra)
+        msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+        try:
+            msj.add(msg_key=msg_key, text="Nuevo contacto", phone=numero_limpio, event_id=event_id, question_id=0)
+        except Exception:
+            # No logueamos detalle aquí para no mezclar PII; si querés, podés sumar otro _log(...)
+            pass
+
+        return contacto, event_id
+
+    # 3) Si existe: usar event_id del objeto ya leído (evita get_event_id_by_phone)
+    event_id = getattr(contacto, "event_id", None) or 1
     return contacto, event_id
 
 
 @log_latency
-def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
-    tx, msj, ev = Transactions(), Messages(), Events()
+def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio, *, nodo_inicio, base_context):
+    """
+    Optimizada:
+    - 1 sola lectura a TX (get_open_row)
+    - Devuelve también open_tx_id para evitar otra query después
+    """
+    tx, msj = Transactions(), Messages()
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-
-    # Nodo inicial del evento (el TTL ahora se controla arriba, antes del WELCOME)
-    nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
-
-    # Contexto base para sembrar la sesión (sin historial previo)
-    contexto_agente = ev.get_description_by_event_id(event_id) or ""
-    base_context = json.dumps([{"role": "system", "content": contexto_agente}])
-
-    # Última transacción del contacto
-    ultima_tx = tx.get_last_timestamp_by_phone(numero_limpio)
     body_text = (body or "").strip()
+
+    # 1) Traer la TX 'abierta' (si existe)
+    open_row = tx.get_open_row(contacto.contact_id)  # ← 1 query
 
     def _abrir_nueva_tx():
         print("[NUEVA] creo transacción ")
-        tx.add(
+        return tx.add(  # ← capturamos el ID
             contact_id=contacto.contact_id,
             phone=numero_limpio,
             name="Abierta",
@@ -298,36 +368,28 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio):
             data_created=now_utc
         )
 
-    # --- Caso 1: primera vez que escribe (no hay TX previa) ---
-    if ultima_tx is None:
-        _abrir_nueva_tx()
+    if open_row is None:
+        # No hay TX → crear nueva
+        open_tx_id = _abrir_nueva_tx()
         msg_key = nodo_inicio
-        if body_text:
-            msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
-
-    # --- Caso 2: última sesión estaba CERRADA ---
-    elif tx.is_last_transaction_closed(numero_limpio) == 1:
-        _abrir_nueva_tx()
-        msg_key = nodo_inicio
-        if body_text:
-            msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
-
-    # --- Caso 4: sesión VIGENTE ---
+        conversation_history = json.loads(base_context)
     else:
-        ultimo_mensaje = msj.get_latest_by_phone(numero_limpio)
+        # Hay TX vigente
+        open_tx_id = open_row.id
+        conversation_str_existente = open_row.conversation or base_context
+        conversation_history = json.loads(conversation_str_existente)
+
+        # Último msg_key del histórico (1 lectura a Messages)
+        ultimo_mensaje = msj.get_latest_by_phone(numero_limpio)  # ← 1 query
         msg_key = ultimo_mensaje.msg_key if ultimo_mensaje else nodo_inicio
-        if body_text:
-            msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
 
-    # Cargar historial ACTUAL de la TX ABIERTA (per-sesión) y agregar el usuario
-    conversation_str = tx.get_open_conversation_by_contact_id(contacto.contact_id) or base_context
-    conversation_history = json.loads(conversation_str)
-
+    # Agregar el mensaje del usuario al historial en memoria + persistir en messages
     if body_text:
         conversation_history.append({"role": "user", "content": body_text})
+        msj.add(msg_key=msg_key, text=body_text, phone=numero_limpio, event_id=event_id)
 
     conversation_str = json.dumps(conversation_history)
-    return msg_key, conversation_str, conversation_history
+    return msg_key, conversation_str, conversation_history, open_tx_id
 
 
 @log_latency
@@ -376,6 +438,11 @@ def ejecutar_workflow(variables):
             variables.update(contexto_actualizado)
         if variables.get("subsiguiente") == 1:
             break
+    if not (variables.get("response_text") or "").strip():
+        candidate = (variables.get("next_node_question") or "").strip()
+        if candidate:
+            variables["response_text"] = candidate
+
     return variables
 
 @log_latency
@@ -386,9 +453,13 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
     # 1) Enviar respuesta (si hay)
     mensaje_a_enviar = variables.get("response_text") or ""
-    print(f"[SEND] nodo={variables.get('nodo_destino')} result={variables.get('result')} -> {mensaje_a_enviar!r}")
     if mensaje_a_enviar:
-        twilio.send_whatsapp_message(mensaje_a_enviar, to, variables.get("url"))
+        variables["request_id"] = send_whatsapp_with_metrics(
+    mensaje_a_enviar, to, variables.get("url"),
+    nodo_id=variables.get("nodo_destino"),
+    request_id=variables.get("request_id"),   # si venía, lo respeta; si no, el helper genera uno
+    tx_id=variables.get("open_tx_id") )
+
 
     # 2) === Fuente de verdad: conversation_str devuelto por el nodo (incluye metas) ===
     try:
@@ -414,7 +485,11 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     variables["conversation_str"] = json.dumps(history)
 
     # 3) Persistir conversación y estado de la transacción
-    open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
+    open_tx_id = variables.get("open_tx_id")
+    if open_tx_id is None:
+        # Fallback por si en algún flujo no llegó el id (no debería pasar ya)
+        open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
+
     estado = "Cerrada" if variables.get("result") == "Cerrada" else "Abierta"
 
     tx.update(
@@ -428,7 +503,11 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     )
 
     if estado == "Cerrada":
-        twilio.send_whatsapp_message("Fin de la consulta. Gracias!", to, None)
+        send_whatsapp_with_metrics(
+        "Fin de la consulta. Gracias!", to, None,
+        nodo_id=variables.get("nodo_destino"),
+        tx_id=variables.get("open_tx_id")
+        )
         
         try:
             Messages().add(
@@ -502,14 +581,60 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
         except Exception as e:
             print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
-        # 4) Log en tabla messages (igual que antes) 
-    Messages().add( 
-            msg_key=variables.get("nodo_destino"), 
-            text=variables.get("response_text"), 
-            phone=variables["numero_limpio"], 
-            group_id=variables.get("group_id", 0), 
-            question_id=variables.get("question_id", 0), 
-            event_id=event_id )
+    
+    # 4) Log en tabla messages (evitar filas vacías/duplicadas)
+    if (variables.get("response_text") or "").strip() and estado != "Cerrada":
+        try:
+            Messages().add(
+                msg_key=variables.get("nodo_destino"),
+                text=variables["response_text"],
+                phone=variables["numero_limpio"],
+                group_id=variables.get("group_id", 0),
+                question_id=variables.get("question_id", 0),
+                event_id=event_id
+            )
+        except Exception as e:
+            print(f"[MSG LOG] add response: {e}")
 
+
+
+def send_whatsapp_with_metrics(text, to, media_url, *, nodo_id=None, request_id=None, tx_id=None):
+    import time, json, hashlib, uuid, os
+
+    t0 = time.perf_counter()
+    rid = request_id or f"req_{uuid.uuid4().hex[:12]}"
+    dest_hash = hashlib.sha256((to or "").encode("utf-8")).hexdigest()[:12]
+    status = "OK"
+    error = None
+    message_sid = None  # ← nuevo
+
+    try:
+        # si tu wrapper retorna el SID, lo capturamos
+        message_sid = twilio.send_whatsapp_message(text, to, media_url)
+        return rid
+    except Exception as e:
+        status = "ERROR"
+        error = str(e)
+        raise
+    finally:
+        env = os.getenv("PX_ENV", "dev")
+        evt = {
+            "ts": int(time.time() * 1000),
+            "env": env,
+            "service": "engine",
+            "version": "v1",
+            "provider": "twilio",
+            "operation": "send_whatsapp_message",
+            "status": status,
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "request_id": rid,
+            "tx_id": tx_id,
+            "nodo_id": nodo_id,
+            "provider_ref": message_sid,   # ← nuevo (MessageSid si hay)
+            "to_hash": dest_hash,
+            "bytes_len": len((text or "").encode("utf-8")),
+            "error": error,
+        }
+        print(json.dumps({k: v for k, v in evt.items() if v is not None}, ensure_ascii=False))
 
 
