@@ -239,28 +239,64 @@ URGENCY_LINE_RE = re.compile(
 
 def _build_extractor_messages(conversation_str: str) -> list[dict]:
     """
-    Prompt específico para extraer SOLO las secciones del digest.
-    - Valores en español, claves en inglés (exactas).
-    - No incluir 'examen físico' o 'signos vitales' o 'laboratorio'en suggested_tests.
+    Extractor de digest clínico con guardrails anti-invención.
+    - General (no asume dominios específicos).
+    - Exige evidencia textual para detalles específicos; si no están -> "No informado" o formulación genérica.
+    - Limita la escalada de certeza diagnóstica.
+    Sugerencia al invocar el modelo: temperature=0.2, top_p=0.9
     """
+    convo = (conversation_str or "").strip()
+
     system = (
-        "Sos un asistente médico que extrae datos estructurados en JSON. "
-        "Devolvé EXCLUSIVAMENTE JSON VÁLIDO (sin backticks) con estas claves EXACTAS "
-        '(strings como valores): '
-        '{"chief_complaint","symptoms_course","clinical_assessment","suggested_tests","treatment_plan"}. '
-        "Si algún dato no surge claro, usá 'No informado'. "
-        "En 'suggested_tests' no incluyas cosas obvias como 'examen físico' o 'signos vitales'. "
-        "Escribí los valores en español, concisos y clínicamente útiles."
+        "Sos médico/a de urgencias. Leé la transcripción completa de un triage AI y devolvé un resumen clínico técnico y breve.\n"
+        "SALIDA: EXCLUSIVAMENTE JSON VÁLIDO (sin backticks) con estas claves EXACTAS (valores string): "
+        "\"chief_complaint\",\"symptoms_course\",\"clinical_assessment\",\"suggested_tests\",\"treatment_plan\".\n"
+        "\n"
+        "MODO ESTRICTO DE HECHOS (OBLIGATORIO):\n"
+        "- Afirmá SOLO lo que esté textual o inequívocamente respaldado por la transcripción.\n"
+        "- Si falta un dato (p. ej., lateralidad, segmento anatómico, mecanismo, tiempos exactos, antecedentes, valores), escribí exactamente \"No informado\" "
+        "o usá formulaciones genéricas SIN inventar (p. ej., \"región afectada\", \"miembro comprometido\").\n"
+        "- No escales certeza diagnóstica: síntomas ≠ diagnóstico confirmado. Usá un léxico prudente solo en clinical_assessment: "
+        "\"probable\", \"posible\", \"a considerar\". NO inventes resultados ni hallazgos no mencionados.\n"
+        "- No deduzcas: derecha/izquierda, nombres de huesos/órganos específicos, embarazo, comorbilidades, alergias, medicaciones, valores de signos/labs, mecanismo exacto, si no aparecen.\n"
+        "- Evitá trasladar especulaciones del paciente como hechos.\n"
+        "\n"
+        "REGLAS DE ESTILO:\n"
+        "1) Español, registro clínico, frases cortas, sin adornos.\n"
+        "2) No repitas información entre campos.\n"
+        "3) Si un dato no surge claro, usá EXACTAMENTE: \"No informado\".\n"
+        "4) En \"suggested_tests\" NO incluyas obviedades como \"examen físico\", \"signos vitales\" ni \"laboratorio básico\".\n"
+        "5) Evitá verbos vagos sin objetivo (\"controlar\", \"evaluar\"); especificá propósito (p. ej., \"analgesia IV\", \"Rx de región afectada AP y lateral\").\n"
+        "6) Máximo 220 caracteres por campo.\n"
+        "7) No agregues comentarios ni campos extra.\n"
+        "\n"
+        "CRITERIOS POR CAMPO:\n"
+        "- chief_complaint: motivo principal (qué + tiempo si aparece; si no, \"No informado\").\n"
+        "- symptoms_course: cronología/evolución y signos asociados presentes en el texto.\n"
+        "- clinical_assessment: hipótesis y riesgos inmediatos SOLO si surgen del texto; usar léxico prudente si no hay confirmación.\n"
+        "- suggested_tests: estudios que cambian conducta hoy (tipo + región/objetivo). Si región exacta no aparece, usar \"región afectada\".\n"
+        "- treatment_plan: medidas iniciales concretas (intervención + vía + objetivo) sin asumir datos ausentes.\n"
+        "\n"
+        "CONSISTENCIA TÉCNICA (GENÉRICA):\n"
+        "- Generalizá anatomía si faltan detalles (\"miembro afectado\", \"región afectada\").\n"
+        "- No conviertas síntomas en diagnósticos confirmados sin mención explícita (p. ej., no poner \"fractura\" si nunca se menciona o confirma).\n"
+        "- No inventes valores, resultados, ni antecedentes.\n"
+        "Devolvé SOLO el JSON final."
     )
+
     user = (
-        "A continuación tenés el historial completo de la conversación (JSON de objetos con role/content). "
+        "A continuación tenés el historial completo (JSON con {role, content}). "
         "Leelo y devolvé SOLO el JSON solicitado:\n\n"
-        f"{conversation_str}"
+        f"{convo}"
     )
+
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+
+
+
 
 def _safe_load_json(text: str) -> Dict[str, Any]:
     """Carga JSON de forma robusta; si falla, retorna {}."""

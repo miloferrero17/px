@@ -452,12 +452,12 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
                 except Exception as e_llm:
                     print(f"[medical_digest] extractor LLM falló: {e_llm}")
                     try:
-                        from app.flows.workflow_utils import _extract_urgency_line
+                        from app.flows.workflows_utils import _extract_urgency_line
                         urgency_line = _extract_urgency_line(conversation_str)
                     except Exception:
                         urgency_line = ""
                     NO_INFO = "No informado"
-                    blocks = ["🩺 Resumen médico", f"DNI: {(national_id or '').strip() or NO_INFO}"]
+                    blocks = ["DNI: {(national_id or '').strip() or NO_INFO}"]
                     if urgency_line:
                         blocks.append(urgency_line)
                     blocks.extend([
@@ -465,7 +465,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
                         f"Sintomatología y evolución: {NO_INFO}",
                         f"Orientación diagnóstica: {NO_INFO}",
                         f"Exámenes complementarios sugeridos: {NO_INFO}",
-                        f"Tto sugerido: {NO_INFO}",
+                        f"Tratamiento sugerido: {NO_INFO}",
                     ])
                     digest_text = "\n\n".join(blocks)
                     digest_json = {
