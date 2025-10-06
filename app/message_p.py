@@ -38,6 +38,11 @@ entorno = os.getenv("ENV", "undefined")
 import time
 import functools
 
+from app.Model.medical_digests import MedicalDigests
+from app.flows.workflows_utils import generar_medical_digest
+
+
+
 
 
 def log_latency(func):
@@ -435,15 +440,76 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         except Exception as e:
             print(f"[MSG LOG] cierre: {e}")
 
-    # 4) Log en tabla messages (igual que antes)
-    Messages().add(
-        msg_key=variables.get("nodo_destino"),
-        text=variables.get("response_text"),
-        phone=variables["numero_limpio"],
-        group_id=variables.get("group_id", 0),
-        question_id=variables.get("question_id", 0),
-        event_id=event_id
-    )
+        # === Enviar y persistir MEDICAL DIGEST SOLO si cerró en nodo 202 ===
+        try:
+            if str(variables.get("nodo_destino")) == "202":
+                conversation_str = variables.get("conversation_str") or ""
+                national_id = getattr(contacto, "national_id", None)
+
+                # Generar digest (LLM) con fallback mínimo
+                try:
+                    digest_text, digest_json = generar_medical_digest(conversation_str, national_id)
+                except Exception as e_llm:
+                    print(f"[medical_digest] extractor LLM falló: {e_llm}")
+                    try:
+                        from app.flows.workflows_utils import _extract_urgency_line
+                        urgency_line = _extract_urgency_line(conversation_str)
+                    except Exception:
+                        urgency_line = ""
+                    NO_INFO = "No informado"
+                    blocks = ["DNI: {(national_id or '').strip() or NO_INFO}"]
+                    if urgency_line:
+                        blocks.append(urgency_line)
+                    blocks.extend([
+                        f"Motivo de consulta: {NO_INFO}",
+                        f"Sintomatología y evolución: {NO_INFO}",
+                        f"Orientación diagnóstica: {NO_INFO}",
+                        f"Exámenes complementarios sugeridos: {NO_INFO}",
+                        f"Tratamiento sugerido: {NO_INFO}",
+                    ])
+                    digest_text = "\n\n".join(blocks)
+                    digest_json = {
+                        "national_id": (national_id or "").strip() or NO_INFO,
+                        "urgency_line": urgency_line,
+                        "chief_complaint": NO_INFO,
+                        "symptoms_course": NO_INFO,
+                        "clinical_assessment": NO_INFO,
+                        "suggested_tests": NO_INFO,
+                        "treatment_plan": NO_INFO,
+                    }
+
+                # 1) Persistir (idempotente por tx_id)
+                try:
+                    MedicalDigests().add_row(
+                        contact_id=contacto.contact_id,
+                        tx_id=open_tx_id if open_tx_id is not None else 0,
+                        digest_text=digest_text,
+                        digest_json=json.dumps(digest_json, ensure_ascii=False),
+                    )
+                except Exception as e_db:
+                    print(f"[medical_digest] error persistiendo: {e_db}")
+
+                # 2) Enviar por WhatsApp si hay destinatario en .env (número limpio)
+                dest_clean = os.getenv("WHATSAPP_MEDICAL_DIGEST_TO", "").strip()
+                if dest_clean:
+                    try:
+                        dest_formatted = "whatsapp:+" + dest_clean
+                        twilio.send_whatsapp_message(digest_text, dest_formatted, None)
+                    except Exception as e_send:
+                        print(f"[medical_digest] error enviando a médico: {e_send}")
+                else:
+                    print("[medical_digest] WHATSAPP_MEDICAL_DIGEST_TO vacío: se persistió pero NO se envió.")
+
+        except Exception as e:
+            print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
+        # 4) Log en tabla messages (igual que antes) 
+    Messages().add( 
+            msg_key=variables.get("nodo_destino"), 
+            text=variables.get("response_text"), 
+            phone=variables["numero_limpio"], 
+            group_id=variables.get("group_id", 0), 
+            question_id=variables.get("question_id", 0), 
+            event_id=event_id )
 
 
 

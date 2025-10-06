@@ -1,51 +1,62 @@
 import json
 import re
 import hashlib
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 # === Esquema para ordenar/rotular cards ===================================
 SCHEMA_ORDER: List[Tuple[str, str]] = [
+    # Header (leído por la vista para edad y chip)
     ("fecha_nacimiento", "Fecha de nacimiento"),
     ("genero", "Género"),
-
-    ("__section_consulta", "Consulta actual"),
-
-    ("motivo_consulta", "Motivo de consulta"),
-    ("sintoma_principal", "Síntoma principal"),
-    ("sintomas_asociados", "Síntomas asociados"),
-    ("factor_desencadenante", "Factor desencadenante"),
-
-    ("inicio", "Inicio"),
-    ("evolucion", "Evolución del cuadro"),
-
-    ("medicacion_recibida", "Medicación recibida"),
-    ("dolor", "Dolor"),
-
     ("triage", "Clasificación de triage"),
 
-    ("__section_examenfisico", "Examen Físico"),
-    ("examen_fisico", "Examen Físico"),
+    # Columna 1 — Información Triage
+    ("motivo_consulta", "Motivo de consulta"),
+    ("sintoma_principal", "Síntoma principal"),
+    ("factor_desencadenante", "Factor desencadenante"),
+    ("inicio", "Inicio de síntomas"),
+    ("medicacion_recibida", "Medicación recibida"),
 
-    ("__section_antecedentes", "Antecedentes del paciente"),
+    # Columna 2 — Historia Clínica
     ("antecedentes_personales", "Antecedentes personales"),
-    ("antecedentes_familiares", "Antecedentes familiares relevantes"),
-    ("cirugias_previas", "Cirugías previas"),
     ("alergias", "Alergias"),
+    ("antecedentes_familiares", "Antecedentes familiares"),
+
     ("medicacion_habitual", "Medicación habitual"),
-    ("embarazo", "Embarazo"),
-    ("vacunas", "Vacunas"),
+
+    # Columna 3 — Consulta Actual
+    ("anamnesis", "Anamnesis"),
+    ("examen_fisico", "Examen físico"),
+    ("impresion_diagnostica", "Impresión diagnóstica"),
 ]
 
+
 # === Defaults ==============================================================
-DEFAULTS = {k: "No refiere" for k, _ in SCHEMA_ORDER}
-DEFAULTS.update({
+DEFAULTS = {
+    # Header
     "fecha_nacimiento": "No disponible",
-    "antecedentes_personales": "Niega",
-    "antecedentes_familiares": "Niega",
-    "cirugias_previas": "Niega",
-    "embarazo": "",
+    "genero": "—",
     "triage": "⬜⬜⬜⬜⬜ Urgencia Estimada No disponible",
-})
+
+    # Columna 1 — Información Triage
+    "motivo_consulta": "No refiere",
+    "sintoma_principal": "No refiere",
+    "factor_desencadenante": "No refiere",
+    "inicio": "No refiere",
+    "medicacion_recibida": "No refiere",
+
+    # Columna 2 — Historia Clínica
+    "antecedentes_personales": "Niega",
+    "alergias": "Niega",
+    "antecedentes_familiares": "Niega",
+    "medicacion_habitual": "No refiere",
+
+    # Columna 3 — Consulta Actual
+    "anamnesis": "No refiere",
+    "examen_fisico": "No consignado",
+    "impresion_diagnostica": "No consignada",
+}
+
 
 # === Parsing robusto del JSON del modelo ==================================
 def _strip_md_fences(t: str) -> str:
@@ -66,17 +77,43 @@ def _extract_json(t: str) -> Dict:
         raise ValueError("No se pudo parsear JSON de la salida del modelo.")
 
 # === Normalización + cards =================================================
-def normalize_report_dict(data, schema=SCHEMA_ORDER, defaults=DEFAULTS):
+def normalize_report_dict(
+    data,
+    schema=SCHEMA_ORDER,
+    defaults=DEFAULTS,
+    use_defaults: bool = True,
+):
+    """
+    - Devuelve SOLO las claves usadas por la UI (según SCHEMA_ORDER).
+    - Normaliza nombres mínimos (ej. birth_date -> fecha_nacimiento).
+    - Si use_defaults=True (recomendado), completa faltantes con DEFAULTS.
+    """
     data = dict(data or {})
+
+    # Normalización mínima de nombres para que el HTML lo lea bien
+    if "birth_date" in data and "fecha_nacimiento" not in data:
+        data["fecha_nacimiento"] = data.pop("birth_date")
+
     report: Dict[str, str] = {}
     for key, _label in schema:
+        # (por si quedó alguna sección en schema en el futuro)
         if key.startswith("__section_"):
             continue
-        v = data.get(key) if isinstance(data, dict) else None
-        report[key] = (v if isinstance(v, str) and v.strip() else defaults[key])
-    if "embarazo" in report:
-        report["embarazo"] = normalize_embarazo(report.get("embarazo"))
+        val = data.get(key, "")
+
+        # Coerción a string y trim
+        if isinstance(val, str):
+            val = val.strip()
+        if use_defaults:
+            if val in (None, "", []):
+                val = defaults.get(key, "")
+        else:
+            if val is None:
+                val = ""
+        report[key] = val
+
     return report
+
 
 def cards_from_report(report, schema=SCHEMA_ORDER):
     cards = []
@@ -95,7 +132,7 @@ def build_report_cards(conversation_history: List[Dict], brain, model: str = "gp
     """
     out = brain.ask_openai(conversation_history, temperature=temperature, model=model)
     data = _extract_json(out)
-    report = normalize_report_dict(data)
+    report = normalize_report_dict(data, use_defaults=True)
     cards = cards_from_report(report)
     return report, cards
 
@@ -111,35 +148,49 @@ def build_report_cards_from_json_text(json_text: str):
 
 # === Snapshot / hash / helpers ============================================
 UI_KEYS = [
-    "fecha_nacimiento","genero",
-    "motivo_consulta","sintoma_principal","sintomas_asociados","factor_desencadenante",
-    "inicio","evolucion","medicacion_recibida",
-    "dolor","triage",
+    # Header que guardamos como snapshot
+    "fecha_nacimiento",
+    "genero",
+
+    # Columna 1 — Información Triage
+    "motivo_consulta",
+    "sintoma_principal",
+    "factor_desencadenante",
+    "inicio",
+    "medicacion_recibida",
+
+    # Columna 2 — Historia Clínica
+    "antecedentes_personales",
+    "alergias",
+    "antecedentes_familiares",
+    "medicacion_habitual",
+
+    # Columna 3 — Consulta Actual
+    "anamnesis",
     "examen_fisico",
-    "antecedentes_personales","antecedentes_familiares","cirugias_previas",
-    "alergias","medicacion_habitual","embarazo","vacunas","anamnesis",
     "impresion_diagnostica",
 ]
 
-def make_final_summary(report_dict: Dict, birth_date: Optional[str], overrides: Optional[Dict[str, str]] = None) -> Dict:
+def make_final_summary(report_dict: Dict[str, Any], birth_date: Optional[str], overrides: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """
-    Arma el JSON 'tal cual UI' que se muestra en revisión y se guarda en la DB
-    dentro de la columna jsonb (p.ej. final_summary_json). No expandir a columnas.
+    Arma el JSON 'tal cual UI' para revisión y para guardar en DB (final_summary).
+    Solo incluye las claves visibles.
     """
     out: Dict[str, str] = {}
+
     for k in UI_KEYS:
         if k == "fecha_nacimiento":
             out[k] = (birth_date or "").strip()
         else:
-            val = ""
+            v = ""
             if isinstance(report_dict, dict):
-                val = (report_dict.get(k) or "")
-            out[k] = str(val).strip()
+                v = (report_dict.get(k) or "")
+            out[k] = str(v).strip()
+
     if overrides:
         for kk, vv in overrides.items():
             out[kk] = (vv or "").strip()
-    if "embarazo" in out:
-        out["embarazo"] = normalize_embarazo(out.get("embarazo"))
+
     return out
 
 def hash_canonico(obj: Dict) -> str:
@@ -150,24 +201,6 @@ def hash_canonico(obj: Dict) -> str:
     payload = json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-def normalize_associated_symptoms(texto: Optional[str]) -> List[str]:
-    """
-    'tos, disnea; fiebre, Tos' -> ['tos','disnea','fiebre']
-    """
-    if not texto:
-        return []
-    parts = re.split(r"[;,]", texto)
-    clean: List[str] = []
-    seen = set()
-    for p in parts:
-        s = p.strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key not in seen:
-            seen.add(key)
-            clean.append(s)
-    return clean
 
 def normalize_embarazo(v: Optional[str]) -> str:
     """
@@ -181,6 +214,7 @@ def normalize_embarazo(v: Optional[str]) -> str:
     if s in {"desconoce", "desconocido", "ns/nc", "nsnc", "n/a", "na"}:
         return "Desconoce"
     return ""
+
 
 
 
