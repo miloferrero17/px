@@ -262,13 +262,12 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
         "- Evitá trasladar especulaciones del paciente como hechos.\n"
         "\n"
         "REGLAS DE ESTILO:\n"
-        "1) Español, registro clínico, frases cortas, sin adornos.\n"
+        "1) Español, registro clínico, frases cortas.\n"
         "2) No repitas información entre campos.\n"
         "3) Si un dato no surge claro, usá EXACTAMENTE: \"No informado\".\n"
         "4) En \"suggested_tests\" NO incluyas obviedades como \"examen físico\", \"signos vitales\" ni \"laboratorio básico\".\n"
-        "5) Evitá verbos vagos sin objetivo (\"controlar\", \"evaluar\"); especificá propósito (p. ej., \"analgesia IV\", \"Rx de región afectada AP y lateral\").\n"
-        "6) Máximo 220 caracteres por campo.\n"
-        "7) No agregues comentarios ni campos extra.\n"
+        "5) Evitá verbos vagos sin objetivo (\"controlar\", \"evaluar\"); especificá propósito.\n"
+        "6) No agregues comentarios ni campos extra.\n"
         "\n"
         "CRITERIOS POR CAMPO:\n"
         "- chief_complaint: motivo principal (qué + tiempo si aparece; si no, \"No informado\").\n"
@@ -293,6 +292,7 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
+
     ]
 
 

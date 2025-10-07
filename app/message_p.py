@@ -40,44 +40,9 @@ import functools
 
 from app.Model.medical_digests import MedicalDigests
 from app.flows.workflows_utils import generar_medical_digest
+from app.obs.logs import log_latency
 
-PX_ENV = os.getenv("PX_ENV") or os.getenv("ENV") or "dev"
 
-def log_latency(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        t0 = time.perf_counter()
-        status = "OK"
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            status = "ERROR"
-            # Log de error estructurado
-            print(json.dumps({
-                "ts": int(time.time() * 1000),
-                "env": PX_ENV,
-                "service": "engine",
-                "version": "v1",
-                "provider": "engine",
-                "operation": func.__name__,
-                "status": status,
-                "error": str(e),
-            }, ensure_ascii=False))
-            raise
-        finally:
-            dur = int((time.perf_counter() - t0) * 1000)
-            # Log de latencia estructurado
-            print(json.dumps({
-                "ts": int(time.time() * 1000),
-                "env": PX_ENV,
-                "service": "engine",
-                "version": "v1",
-                "provider": "engine",
-                "operation": func.__name__,
-                "status": status,
-                "latency_ms": dur,
-            }, ensure_ascii=False))
-    return wrapper
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
@@ -109,40 +74,72 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     # 2) Guard de sesión: si corresponde, ENVIAR WELCOME y NO procesar este mensaje
     if message1(tx, numero_limpio, TTL_MIN):
+        op_log("engine", "welcome_guard_enter", "OK",
+           to_phone=numero_limpio,
+           extra={
+               "event_id": event_id,
+               "nodo_inicio": nodo_inicio
+           })
         send_whatsapp_with_metrics(
         WELCOME_MSG, to, None,
         nodo_id=nodo_inicio,   # ya calculado arriba
         tx_id=None)             # aún no existe TX nueva
 
 
+
+        from datetime import datetime, timezone
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-        last_info = tx.get_last_tx_info_by_phone(numero_limpio)  # UNA lectura
 
-        # Cerrar TX abierta previa (si existe y está abierta)
+        # contact_id robusto (objeto o dict)
+        contact_id = (
+            getattr(contacto, "contact_id", None)
+            or getattr(contacto, "id", None)
+            or (contacto.get("contact_id") if isinstance(contacto, dict) else None)
+            or (contacto.get("id") if isinstance(contacto, dict) else None)
+        )
+
+        # ==== inspección de TX previa ====
         try:
-            if last_info and (last_info.get("name") or "") != "Cerrada":
-                tx.update(
-                    id=last_info["id"],
-                    contact_id=contacto.contact_id,
-                    phone=numero_limpio,
-                    name="Cerrada",
-                    timestamp=now_utc,
-                    event_id=event_id,
-                )
-        except Exception:
-            pass
+            last_info = tx.get_last_tx_info_by_phone(numero_limpio)  # UNA lectura
+            if not last_info:
+                op_log("engine", "prev_tx_check", "OK", to_phone=numero_limpio,
+                    extra={"status": "no_prev_tx"})
+            else:
+                last_name = (last_info.get("name") or "").strip()
+                if last_name == "Cerrada":
+                    op_log("engine", "prev_tx_check", "OK", to_phone=numero_limpio,
+                        extra={"status": "already_closed", "prev_tx_id": last_info.get("id")})
+                else:
+                    # ==== cerrar TX abierta previa ====
+                    t_close = time.perf_counter()
+                    try:
+                        tx.update(
+                            id=last_info["id"],
+                            contact_id=contact_id,
+                            phone=numero_limpio,
+                            name="Cerrada",
+                            timestamp=now_utc,
+                            event_id=event_id,
+                        )
+                        op_log("supabase", "close_previous_tx", "OK", t0=t_close,
+                            extra={"prev_tx_id": last_info["id"]})
+                    except Exception as e:
+                        op_log("supabase", "close_previous_tx", "ERROR", t0=t_close, error=str(e),
+                            extra={"prev_tx_id": last_info.get("id")})
+        except Exception as e:
+            op_log("engine", "prev_tx_check", "ERROR", to_phone=numero_limpio, error=str(e))
 
-
-
-        # Construir historial con WELCOME incluido (reusar base_context y nodo_inicio)
+        # ==== construir historial con WELCOME incluido ====
         history = json.loads(base_context)
         history.append({"role": "assistant", "content": WELCOME_MSG})
         conversation_json = json.dumps(history)
 
-        # Abrir TX nueva con el historial que incluye el WELCOME
+        # ==== abrir TX nueva (loguear sí o sí resultado) ====
+        t_tx = time.perf_counter()
+        new_tx_id = None
         try:
-            tx.add(
-                contact_id=contacto.contact_id,
+            new_tx_id = tx.add(
+                contact_id=contact_id,
                 phone=numero_limpio,
                 name="Abierta",
                 event_id=event_id,
@@ -150,10 +147,24 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
                 timestamp=now_utc,
                 data_created=now_utc
             )
+            op_log("supabase", "insert_transaction", "OK", t0=t_tx, to_phone=numero_limpio,
+                extra={
+                    "contact_id": contact_id,
+                    "event_id": event_id,
+                    "new_tx_id": new_tx_id,
+                    "conv_len": len(conversation_json or "")
+                })
         except Exception as e:
-            print(f"[WELCOME GUARD] error abriendo TX nueva: {e}")
+            op_log("supabase", "insert_transaction", "ERROR", t0=t_tx, to_phone=numero_limpio, error=str(e))
+            return "Ok"
 
-        # Guardar el WELCOME (no el placeholder) en messages
+        # sanity: si por alguna razón no obtuvimos PK, cortamos para no dejar estado inconsistente
+        if not new_tx_id:
+            op_log("engine", "insert_transaction_postcheck", "ERROR", error_code="TX_PK_MISSING")
+            return "Ok"
+
+        # ==== guardar WELCOME en messages (también con logs) ====
+        t_msg = time.perf_counter()
         try:
             msj.add(
                 msg_key=nodo_inicio,   # ya calculado arriba
@@ -161,8 +172,13 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
                 phone=numero_limpio,
                 event_id=event_id
             )
+            op_log("supabase", "insert_message", "OK", t0=t_msg, extra={"msg_key": nodo_inicio})
         except Exception as e:
-            print(f"[WELCOME GUARD] error guardando WELCOME en messages: {e}")
+            op_log("supabase", "insert_message", "ERROR", t0=t_msg, error=str(e))
+
+        op_log("engine", "welcome_guard_exit", "OK",
+            to_phone=numero_limpio,
+            extra={"new_tx_id": new_tx_id})
 
         return "Ok"
 
@@ -172,6 +188,9 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     contacto, event_id, body, numero_limpio,
     nodo_inicio=nodo_inicio,
     base_context=base_context,)
+
+    op_log("engine", "session_continue", "OK",
+       extra={"msg_key": msg_key, "open_tx_id": open_tx_id})
 
 
     # 4) Manejo de adjuntos SOLO si NO estamos en consentimiento (204) ni DNI (206)
@@ -201,37 +220,70 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     return "Ok"
 
-
 @log_latency
 def message1(tx, numero_limpio: str, ttl_minutos: int) -> bool:
     """
     True si corresponde enviar la bienvenida y NO procesar este primer mensaje.
     Optimizada: usa UNA sola lectura (get_last_tx_info_by_phone) y la helper TTL.
+    Lógica:
+      - Sin transacciones previas -> True (welcome)
+      - Última = 'Cerrada'       -> True (welcome)
+      - Última = 'Abierta' y diff_min > ttl_minutos -> True (welcome)
+      - En cualquier otro caso -> False (seguir flujo normal)
     """
+    t0 = time.perf_counter()
     try:
         info = tx.get_last_tx_info_by_phone(numero_limpio)
+
+        # 1) primera vez → welcome
         if info is None:
-            return True  # primera vez → welcome
-
-        # Si la última TX está Cerrada → welcome
-        if (info.get("name") or "") == "Cerrada":
+            op_log("engine", "message1_decision", "OK", t0=t0,
+                   to_phone=numero_limpio,
+                   extra={"reason": "no_prev_tx"})
             return True
 
-        # Última abierta → evaluar TTL con la MISMA lógica de siempre
-        diff_min = calcular_diferencia_desde_info(info)
-        if diff_min is not None and int(diff_min) > int(ttl_minutos):
+        last_name = (info.get("name") or "").strip()
+
+        # 2) última cerrada → welcome
+        if last_name == "Cerrada":
+            op_log("engine", "message1_decision", "OK", t0=t0,
+                   to_phone=numero_limpio,
+                   extra={"reason": "prev_tx_closed", "prev_tx_id": info.get("id")})
             return True
 
+        # 3) última abierta → evaluar TTL
+        diff_min = calcular_diferencia_desde_info(info)  # puede devolver None
+        try:
+            diff_i = int(diff_min) if diff_min is not None else None
+            ttl_i = int(ttl_minutos)
+        except Exception:
+            # si no podemos convertir, no forzamos welcome para evitar spam
+            diff_i, ttl_i = None, int(ttl_minutos)
+
+        if diff_i is not None and diff_i > ttl_i:
+            op_log("engine", "message1_decision", "OK", t0=t0,
+                   to_phone=numero_limpio,
+                   extra={"reason": "ttl_expired", "prev_tx_id": info.get("id"),
+                          "diff_min": diff_i, "ttl_min": ttl_i})
+            return True
+
+        # 4) mantener sesión abierta
+        op_log("engine", "message1_decision", "OK", t0=t0,
+               to_phone=numero_limpio,
+               extra={"reason": "keep_session", "prev_tx_id": info.get("id"),
+                      "diff_min": diff_i, "ttl_min": ttl_i})
         return False
 
-    except Exception:
-        # en error, evitar spam
+    except Exception as e:
+        # En error: ser conservadores (no mandar welcome para no spamear)
+        op_log("engine", "message1_decision", "ERROR", t0=t0,
+               to_phone=numero_limpio, error=str(e))
         return False
 
 
 
 
-
+@log_latency
 def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcription, to):
     """
     Envía una respuesta en WhatsApp según el adjunto y devuelve:
@@ -267,80 +319,67 @@ def procesar_adjuntos(tiene_adjunto, media_type, description, pdf_text, transcri
 
     # Otros tipos: no responde
     return False, None, None
+
+from app.obs.logs import op_log
+
 @log_latency
 def obtener_o_crear_contacto(numero_limpio, request_id=None, tx_id=None):
     """
-    Reduce roundtrips a Supabase y emite logs operativos seudonimizados.
-    - Camino "existe": 1 query 
-    - Camino "no existe": 2 queries 
-    - Logs: operation/select/insert con provider=supabase, status y latency_ms
-    - Nunca loguea el teléfono en claro (no PII)
+    Lee/crea contacto con logs centralizados.
+    - Camino existe: 1 query
+    - Camino no existe: 2 queries
+    - Sin PII en logs (no imprimimos teléfono)
     """
-    ctt = Contacts()
-    ev = Events()
-    msj = Messages()
+    ctt, ev, msj = Contacts(), Events(), Messages()
 
-    def _log(operation, status, t0, http_status=None, error_code=None):
-        evt = {
-            "ts": int(time.time() * 1000),
-            "env": "dev",                    # en prod cambiá a "prod" desde tu código/global
-            "service": "engine",
-            "version": "v1",                 # si tenés tag/commit, ponelo acá
-            "tx_id": tx_id,
-            "request_id": request_id,
-            "operation": operation,
-            "provider": "supabase",
-            "status": status,
-            "latency_ms": int((time.perf_counter() - t0) * 1000),
-        }
-        if http_status is not None:
-            evt["http_status"] = http_status
-        if error_code is not None:
-            evt["error_code"] = error_code
-        print(json.dumps({k: v for k, v in evt.items() if v is not None}, ensure_ascii=False))
-
-    # 1) Buscar por phone (solo una vez)
+    # 1) Buscar por phone (1 query)
     t0 = time.perf_counter()
     try:
         contacto = ctt.get_by_phone(numero_limpio)
-        _log("select_contact_by_phone", "OK", t0)
-    except Exception as e:
-        _log("select_contact_by_phone", "ERROR", t0, error_code="ERR_SBX_SELECT")
+        op_log(provider="supabase", operation="select_contact_by_phone",
+               status="OK", t0=t0, tx_id=tx_id, request_id=request_id)
+    except Exception:
+        op_log(provider="supabase", operation="select_contact_by_phone",
+               status="ERROR", t0=t0, tx_id=tx_id, request_id=request_id,
+               error_code="ERR_SBX_SELECT")
         raise
 
-    # 2) Si no existe, crear y traer por ID (no volver a get_by_phone)
+    # 2) Si no existe, crear y luego traer por ID (no volver a get_by_phone)
     if contacto is None:
         event_id = 1  # default
+
         t1 = time.perf_counter()
         try:
             contact_id = ctt.add(event_id=event_id, name="Juan", phone=numero_limpio)
-            _log("insert_contact", "OK", t1)
-        except Exception as e:
-            _log("insert_contact", "ERROR", t1, error_code="ERR_SBX_UPSERT")
+            op_log("supabase", "insert_contact", "OK", t1, tx_id=tx_id, request_id=request_id)
+        except Exception:
+            op_log("supabase", "insert_contact", "ERROR", t1, tx_id=tx_id, request_id=request_id,
+                   error_code="ERR_SBX_UPSERT")
             raise
 
         t2 = time.perf_counter()
         try:
             contacto = ctt.get_by_id(contact_id)
-            _log("select_contact_by_id", "OK", t2)
-        except Exception as e:
-            _log("select_contact_by_id", "ERROR", t2, error_code="ERR_SBX_SELECT")
+            op_log("supabase", "select_contact_by_id", "OK", t2, tx_id=tx_id, request_id=request_id)
+        except Exception:
+            op_log("supabase", "select_contact_by_id", "ERROR", t2, tx_id=tx_id, request_id=request_id,
+                   error_code="ERR_SBX_SELECT")
             raise
 
-        # Mensaje y nodo inicial (no genera lecturas extra)
-        msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+        # Mensaje y nodo inicial (no agrega lecturas extra relevantes)
         try:
-            msj.add(msg_key=msg_key, text="Nuevo contacto", phone=numero_limpio, event_id=event_id, question_id=0)
+            msg_key = ev.get_nodo_inicio_by_event_id(event_id)
+            msj.add(msg_key=msg_key, text="Nuevo contacto", phone=numero_limpio,
+                    event_id=event_id, question_id=0)
         except Exception:
-            # No logueamos detalle aquí para no mezclar PII; si querés, podés sumar otro _log(...)
+            # No log detallado para evitar PII accidental
             pass
 
         return contacto, event_id
 
-    # 3) Si existe: usar event_id del objeto ya leído (evita get_event_id_by_phone)
+    # 3) Si existe, usar event_id ya presente (evita get_event_id_by_phone)
     event_id = getattr(contacto, "event_id", None) or 1
     return contacto, event_id
-
 
 @log_latency
 def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio, *, nodo_inicio, base_context):
@@ -391,7 +430,6 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio, *, nodo_
     conversation_str = json.dumps(conversation_history)
     return msg_key, conversation_str, conversation_history, open_tx_id
 
-
 @log_latency
 def inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conversation_str, conversation_history):
     return {
@@ -428,11 +466,10 @@ def inicializar_variables(body, numero_limpio, contacto, event_id, msg_key, conv
         "aux_question_fofoca": [{"role": "system", "content": ""}],
         "max_preguntas": 0
     }
-
 @log_latency
 def ejecutar_workflow(variables):
     while True:
-        print(f"Ejecutando nodo {variables['nodo_destino']}")
+        #print(f"Ejecutando nodo {variables['nodo_destino']}")
         contexto_actualizado = ejecutar_nodo(variables["nodo_destino"], variables)
         if contexto_actualizado:
             variables.update(contexto_actualizado)
@@ -444,7 +481,6 @@ def ejecutar_workflow(variables):
             variables["response_text"] = candidate
 
     return variables
-
 @log_latency
 def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     import json
@@ -492,17 +528,32 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
     estado = "Cerrada" if variables.get("result") == "Cerrada" else "Abierta"
 
-    tx.update(
-        id=open_tx_id,
-        contact_id=contacto.contact_id,
-        phone=variables["numero_limpio"],
-        name=estado,
-        conversation=variables["conversation_str"],  # <- guardamos lo que armó el nodo (con metas)
-        timestamp=now_utc,
-        event_id=event_id
-    )
+    t_upd = time.perf_counter()
+    try:
+        tx.update(
+            id=open_tx_id,
+            contact_id=contacto.contact_id,
+            phone=variables["numero_limpio"],
+            name=estado,
+            conversation=variables["conversation_str"],  # lo que armó el nodo (con metas)
+            timestamp=now_utc,
+            event_id=event_id
+        )
+        op_log("supabase", "update_transaction", "OK", t0=t_upd,
+            extra={"tx_id": open_tx_id, "fields": ["conversation","timestamp","name"]})
+    except Exception as e:
+        op_log("supabase", "update_transaction", "ERROR", t0=t_upd,
+            error=str(e), extra={"tx_id": open_tx_id})
+        # si falla la actualización, mejor no seguir con cierre
+        estado = "Abierta"
 
     if estado == "Cerrada":
+
+        op_log("engine", "close_transaction_intent", "OK",
+           extra={
+               "tx_id": open_tx_id,
+               "nodo_destino": variables.get("nodo_destino")
+           })
         send_whatsapp_with_metrics(
         "Fin de la consulta. Gracias!", to, None,
         nodo_id=variables.get("nodo_destino"),
@@ -581,7 +632,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
         except Exception as e:
             print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
-    
+        op_log("supabase", "close_transaction", "OK", extra={"tx_id": open_tx_id  })
     # 4) Log en tabla messages (evitar filas vacías/duplicadas)
     if (variables.get("response_text") or "").strip() and estado != "Cerrada":
         try:
@@ -597,44 +648,35 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
             print(f"[MSG LOG] add response: {e}")
 
 
+import hashlib
+from app.obs.logs import provider_call, log_provider_result, set_request_id
+from app.obs.logs import CTX_REQUEST_ID
 
 def send_whatsapp_with_metrics(text, to, media_url, *, nodo_id=None, request_id=None, tx_id=None):
-    import time, json, hashlib, uuid, os
+    """
+    Envía un WhatsApp y registra logs centralizados:
+    - PROVIDER_CALL (latencia/status)
+    - PROVIDER_RESULT (provider_ref, tamaños, to_hash)
+    Sin PII de contenido.
+    """
+    # mantiene tu comportamiento: generar request_id si falta
+    rid = request_id or CTX_REQUEST_ID.get() or set_request_id(None)
 
-    t0 = time.perf_counter()
-    rid = request_id or f"req_{uuid.uuid4().hex[:12]}"
-    dest_hash = hashlib.sha256((to or "").encode("utf-8")).hexdigest()[:12]
-    status = "OK"
-    error = None
-    message_sid = None  # ← nuevo
+    # PII-safe
+    to_hash = hashlib.sha256((to or "").encode("utf-8")).hexdigest()[:12]
+    bytes_len = len((text or "").encode("utf-8"))
 
-    try:
-        # si tu wrapper retorna el SID, lo capturamos
-        message_sid = twilio.send_whatsapp_message(text, to, media_url)
-        return rid
-    except Exception as e:
-        status = "ERROR"
-        error = str(e)
-        raise
-    finally:
-        env = os.getenv("PX_ENV", "dev")
-        evt = {
-            "ts": int(time.time() * 1000),
-            "env": env,
-            "service": "engine",
-            "version": "v1",
-            "provider": "twilio",
-            "operation": "send_whatsapp_message",
-            "status": status,
-            "latency_ms": int((time.perf_counter() - t0) * 1000),
-            "request_id": rid,
-            "tx_id": tx_id,
-            "nodo_id": nodo_id,
-            "provider_ref": message_sid,   # ← nuevo (MessageSid si hay)
-            "to_hash": dest_hash,
-            "bytes_len": len((text or "").encode("utf-8")),
-            "error": error,
-        }
-        print(json.dumps({k: v for k, v in evt.items() if v is not None}, ensure_ascii=False))
+    # medir latencia y status de la call
+    with provider_call("twilio", "send_whatsapp_message"):
+        sid = twilio.send_whatsapp_message(text, to, media_url)
 
-
+    # referencia del proveedor + metadatos útiles para join
+    log_provider_result(
+        provider="twilio",
+        operation="send_whatsapp_message",
+        provider_ref=sid,     # Twilio SID
+        bytes_len=bytes_len,
+        to_hash=to_hash,
+        extra={"node_id": nodo_id, "tx_id": tx_id}
+    )
+    return rid

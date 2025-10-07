@@ -1,21 +1,22 @@
-def ejecutar_nodo(nodo_id, variables):
-    NODOS = {
-        201: nodo_201,
-        202: nodo_202,
-        203: nodo_203,
-        204: nodo_204,
-        205: nodo_205,
-        206: nodo_206,
-        
-    }
-    try:
-        return NODOS[nodo_id](variables)
-    except Exception as e:
-        import traceback
-        print(f"[ENGINE] error en nodo {nodo_id}: {e}")
-        traceback.print_exc()
-        raise
+import app.obs.logs as obs_logs
 
+def ejecutar_nodo(nodo_id, variables):
+    tx_obj = variables.get("tx")
+    req_id = variables.get("request_id")
+    tx_id  = getattr(tx_obj, "id", None) or variables.get("tx_id")
+    rid = obs_logs.CTX_REQUEST_ID.get() or req_id or obs_logs.set_request_id(None)
+    variables["request_id"] = rid
+    obs_logs.set_request_id(req_id)   
+    obs_logs.set_tx_id(tx_id)
+
+    NODOS = {201:nodo_201,202:nodo_202,203:nodo_203,204:nodo_204,205:nodo_205,206:nodo_206}
+
+    with obs_logs.node_ctx(nodo_id, tx_id=tx_id, request_id=req_id):
+        result = NODOS[nodo_id](variables)
+
+    if isinstance(result, dict):
+        obs_logs.enrich_exit_with_next(result.get("nodo_destino"), result.get("decision"))
+    return result
 
 
 
