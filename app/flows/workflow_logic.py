@@ -9,7 +9,12 @@ def ejecutar_nodo(nodo_id, variables):
     obs_logs.set_request_id(req_id)   
     obs_logs.set_tx_id(tx_id)
 
-    NODOS = {201:nodo_201,202:nodo_202,203:nodo_203,204:nodo_204,205:nodo_205,206:nodo_206}
+    NODOS = {201:nodo_201,
+             202:nodo_202,
+             203:nodo_203,
+             204:nodo_204,
+             205:nodo_205,
+             206:nodo_206}
 
     with obs_logs.node_ctx(nodo_id, tx_id=tx_id, request_id=req_id):
         result = NODOS[nodo_id](variables)

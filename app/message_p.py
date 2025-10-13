@@ -46,8 +46,7 @@ from app.obs.logs import log_latency
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
-    # 0) Normalizar entradas (None-safe)
-    #body = (body or "") + (transcription or "") + (description or "") + (pdf_text or "")
+
     body = (body or "")
     from datetime import datetime, timezone
 
@@ -158,7 +157,6 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
             op_log("supabase", "insert_transaction", "ERROR", t0=t_tx, to_phone=numero_limpio, error=str(e))
             return "Ok"
 
-        # sanity: si por alguna razón no obtuvimos PK, cortamos para no dejar estado inconsistente
         if not new_tx_id:
             op_log("engine", "insert_transaction_postcheck", "ERROR", error_code="TX_PK_MISSING")
             return "Ok"
@@ -223,8 +221,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 @log_latency
 def message1(tx, numero_limpio: str, ttl_minutos: int) -> bool:
     """
-    True si corresponde enviar la bienvenida y NO procesar este primer mensaje.
-    Optimizada: usa UNA sola lectura (get_last_tx_info_by_phone) y la helper TTL.
+    True si corresponde enviar la bienvenida 
     Lógica:
       - Sin transacciones previas -> True (welcome)
       - Última = 'Cerrada'       -> True (welcome)
@@ -384,7 +381,6 @@ def obtener_o_crear_contacto(numero_limpio, request_id=None, tx_id=None):
 @log_latency
 def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio, *, nodo_inicio, base_context):
     """
-    Optimizada:
     - 1 sola lectura a TX (get_open_row)
     - Devuelve también open_tx_id para evitar otra query después
     """
@@ -633,6 +629,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         except Exception as e:
             print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
         op_log("supabase", "close_transaction", "OK", extra={"tx_id": open_tx_id  })
+        
     # 4) Log en tabla messages (evitar filas vacías/duplicadas)
     if (variables.get("response_text") or "").strip() and estado != "Cerrada":
         try:

@@ -18,10 +18,13 @@ CTX_TX_ID      = ContextVar("tx_id", default=None)
 CTX_NODE_ID    = ContextVar("node_id", default=None)
 CTX_SPAN_ID    = ContextVar("span_id", default=None)
 
+#Helpers
 def _now_ms(): return int(time.time() * 1000)
 def _id(prefix): return f"{prefix}_{uuid.uuid4().hex[:12]}"
 def _clean(d):   return {k: v for k, v in d.items() if v is not None}
 
+
+#Me escribe el log
 def _emit(level: str, payload: dict):
     base = {
         "ts": _now_ms(),
@@ -51,6 +54,7 @@ def set_tx_id(tx_id: Optional[Union[int, str]]):
     CTX_TX_ID.set(tx_id)
     return tx_id
 
+#Para ejecuciones de nods
 @contextmanager
 def node_ctx(node_id: int, *, tx_id: Optional[Union[int, str]] = None, request_id: Optional[str] = None):
     """
@@ -85,6 +89,7 @@ def enrich_exit_with_next(next_node_id: Optional[int] = None, decision: Optional
     """Enriquecimiento opcional del exit del nodo con próximo nodo y decisión."""
     _emit("INFO", _clean({"event":"ENGINE_STEP_EXIT_ENRICH","next_node_id":next_node_id,"decision":decision}))
 
+#Llamadas atwilio openai supabase
 @contextmanager
 def provider_call(provider: str, operation: str):
     """
