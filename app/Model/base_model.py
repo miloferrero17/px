@@ -47,7 +47,11 @@ class BaseModel:
             if not response_data:
                 raise Exception("No se devolvió registro creado.")
             new_record = response_data[0]
-            return new_record.get("id") or new_record.get("user_id") or 0
+            return (new_record.get("contact_id")        # contacts
+            or new_record.get("id")
+            or new_record.get("user_id")
+            or 0
+            )
         except Exception as e:
             raise DatabaseError(f"Error al crear registro en {self.table_name}: {e}")
 

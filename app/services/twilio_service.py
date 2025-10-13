@@ -23,24 +23,39 @@ if not account_sid or  not auth_token or not twilio_whatsapp_number:
 # Inicialización del cliente Twilio
 client = Client(account_sid, auth_token)
 
+# app/services/twilio_service.py
+import logging
+
+logger = logging.getLogger("twilio_service")
+
+
 def send_whatsapp_message(body, to, media_url=None):
     """
-    Envía un mensaje de WhatsApp utilizando Twilio y loguea el resultado.
+    Envía un mensaje de WhatsApp utilizando Twilio y retorna el SID.
+    - Sin emojis en logs (evita UnicodeEncodeError en Windows).
+    - No loguea PII (no imprime el número completo).
+    - Acepta media_url como str o lista (Twilio prefiere lista).
     """
-    if not to.startswith("whatsapp:"):
-        print(f"⚠️ Número malformado: '{to}' — debería comenzar con 'whatsapp:'")
-    print(twilio_whatsapp_number)
     try:
+        if not str(to).startswith("whatsapp:"):
+            logger.warning("Número malformado: debe comenzar con 'whatsapp:'")
+
+        media_param = None
+        if media_url:
+            media_param = media_url if isinstance(media_url, (list, tuple)) else [media_url]
+
         message = client.messages.create(
-            from_=f'whatsapp:{twilio_whatsapp_number}',
+            from_=f"whatsapp:{twilio_whatsapp_number}",
             body=body,
             to=to,
-            media_url=media_url if media_url else None
+            media_url=media_param
         )
-        print(f"✅ Mensaje enviado a {to}. SID: {message.sid}")
-        return message
+
+        logger.info("Mensaje enviado correctamente (provider=twilio, sid=%s)", message.sid)
+        return message.sid  # ← devolvemos el SID (string)
+
     except Exception as e:
-        print(f"❌ Error al enviar mensaje de WhatsApp a {to}: {e}")
+        logger.error("Error al enviar WhatsApp (provider=twilio): %s", e)
         raise RuntimeError(f"Error al enviar el mensaje de WhatsApp: {e}")
 
 

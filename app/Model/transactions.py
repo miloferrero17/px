@@ -347,7 +347,43 @@ class Transactions(BaseModel):
             print(f"[Transactions.set_question_zero] error TX {row.id}: {e}")
 
         return "new0", current_cursor
+    def get_last_tx_info_by_phone(self, phone: str):
+        """
+        Devuelve info mínima de la última TX para ese teléfono en UNA SOLA lectura:
+        { "id": int, "name": "Abierta"|"Cerrada", "timestamp": <iso str> }
+        Retorna None si no hay transacciones.
+        """
+        txs = super().get("phone", phone, order_field="timestamp.asc,id.asc")
+        if not txs:
+            return None
+        last = txs[-1]
+        if isinstance(last, dict):
+            return {
+                "id": last.get("id"),
+                "name": last.get("name"),
+                "timestamp": last.get("timestamp"),
+            }
+        return {
+            "id": getattr(last, "id", None),
+            "name": getattr(last, "name", None),
+            "timestamp": getattr(last, "timestamp", None),
+        }
 
+    
+""""
+    def get_last_tx_info_by_phone(self, phone: str):
+
+        txs = super().get("phone", phone, order_field="timestamp")
+        if not txs:
+            return None
+        last = txs[-1]
+        # last puede ser dataclass/objeto o dict según tu BaseModel
+        if isinstance(last, dict):
+            return {"id": last.get("id"), "name": last.get("name"), "timestamp": last.get("timestamp")}
+        return {"id": getattr(last, "id", None),
+                "name": getattr(last, "name", None),
+                "timestamp": getattr(last, "timestamp", None)}
+"""
 
 
 
