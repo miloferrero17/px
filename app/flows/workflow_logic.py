@@ -193,7 +193,7 @@ def nodo_205(variables):
     """
     Nodo ¿Que te trae a la guardia?
     """
-    response_text = "¿Qué te trae a la guardia? \n\n💬Podés responder con texto, foto o audio y sumar todos los detalles que consideres útiles."
+    response_text = "¿Qué te trae hoy a la guardia? \n\n💬Podés responder con texto, foto o audio e incluir todos los detalles que consideres relevantes."
 
     tx = variables["tx"]
     contacto = variables.get("contacto")

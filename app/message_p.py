@@ -559,7 +559,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         try:
             Messages().add(
                 msg_key=variables.get("nodo_destino"),
-                text="Fin de la consulta. Gracias!",
+                text="¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.",
                 phone=variables["numero_limpio"],
                 event_id=event_id
             )
