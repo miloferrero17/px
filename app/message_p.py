@@ -551,7 +551,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
                "nodo_destino": variables.get("nodo_destino")
            })
         send_whatsapp_with_metrics(
-        "Fin de la consulta. Gracias!", to, None,
+        "¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.", to, None,
         nodo_id=variables.get("nodo_destino"),
         tx_id=variables.get("open_tx_id")
         )
