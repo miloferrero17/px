@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: PX API
+  version: "1.0.0"
+  description: >
+    API pull para que el HIS obtenga el último triage de un paciente por su national ID (p. ej., DNI en AR).
+    Estado actual: lee `contacts` y `transactions` en Supabase.
+
+servers:
+  - url: https://api.sandbox.pacientex.com.ar
+    description: Sandbox
+  - url: https://api.pacientex.com.ar
+    description: Producción
+
+paths:
+  /v1/triage:fetch-latest:
+    post:
+      summary: Devuelve el último triage por national ID (ventana 8h, UTC)
+      operationId: fetchLatestTriage
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dni]
+              properties:
+                dni:
+                  type: string
+                  description: National ID del paciente (p. ej., DNI en AR). Validado upstream en PX.
+            examples:
+              ok:
+                value: { dni: "45038826" }
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-Id: { schema: { type: string }, description: ID de trazabilidad }
+
+            #X-RateLimit-Limit-Minute: { schema: { type: string } }
+            #X-RateLimit-Limit-Second: { schema: { type: string } }
+            #X-PXE-Timestamp: { schema: { type: string }, description: "Epoch seconds (firma HMAC)" }
+            #X-PXE-Body-SHA256: { schema: { type: string } }
+            #X-PXE-Signature: { schema: { type: string } }         
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriageResponse"
+              examples:
+                ok:
+                  value:
+                    dni: "45038826"
+                    triage_timestamp: "2025-09-26T18:58:38Z"
+                    medical_digest: ""
+                    conversation:
+                      - role: "user"
+                        content: "…"
+                        timestamp: "2025-09-26T18:58:00Z"
+                    conversation_truncated: false
+                    request_id: "pxe-abc123"
+        "400":
+          description: Body inválido o sin national ID (`dni`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                bad_dni:
+                  value: { error: { code: "BAD_REQUEST_DNI", message: "Missing 'dni' (national ID)", request_id: "pxe-xyz" } }
+        "401":
+          description: Falta/clave inválida
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: IP no permitida / clave revocada (producción)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No encontrado en 8h para ese national ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                not_found:
+                  value: { error: { code: "NOT_FOUND", message: "No triage in last 8h for national ID", request_id: "pxe-xyz" } }
+        "409":
+          description: Conflicto de datos (múltiples contactos con el mismo national ID)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                data_conflict:
+                  value: { error: { code: "DATA_CONFLICT", message: "Multiple contacts for national ID", request_id: "pxe-xyz" } }
+        "503":
+          description: Falla de dependencia (Supabase)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+          description: Origen del mensaje
+        content: { type: string }
+        timestamp: { type: string, format: date-time }
+
+    TriageResponse:
+      type: object
+      properties:
+        dni:
+          type: string
+          description: National ID (p. ej., DNI en AR)
+        triage_timestamp: { type: string, format: date-time }
+        medical_digest:
+          type: string
+          description: "máx. 1200 chars; puede venir vacío"
+        conversation:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Message" }
+          description: "Lista cronológica de mensajes; si la DB tenía texto plano, se normaliza a un único mensaje 'assistant'."
+        conversation_truncated: { type: boolean }
+        request_id: { type: string }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - BAD_REQUEST_DNI
+                - UNAUTHORIZED
+                - FORBIDDEN_IP
+                - NOT_FOUND
+                - DATA_CONFLICT
+                - RATE_LIMITED
+                - DEPENDENCY_ERROR
+                - INTERNAL_ERROR
+            message: { type: string }
+            request_id: { type: string }
