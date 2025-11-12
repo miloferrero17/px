@@ -52,11 +52,6 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     numero_limpio = limpiar_numero(to)
 
-    WELCOME_MSG = (
-    "👋 Hola, soy el asistente de PX Salud.\n\n"
-    "Para comenzar, por favor escribí el DNI de la persona que necesita atención médica.")
-
-
     tx = Transactions()
     ev = Events()
     msj = Messages()
@@ -67,9 +62,30 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     # Contexto base de la sesión
     contexto_agente = ev.get_description_by_event_id(event_id) or ""
     base_context = json.dumps([{"role": "system", "content": contexto_agente}])
+    
     nodo_inicio = ev.get_nodo_inicio_by_event_id(event_id) or 206
     # TTL del evento (fallback 5)
     TTL_MIN = ev.get_time_by_event_id(event_id) or 5
+
+
+    #WELCOME_MSG = ("👋 Hola, soy el asistente de PX Salud.\n\n" "Para comenzar, por favor escribí el DNI de la persona que necesita atención médica.")
+    if int(nodo_inicio) == 206:
+        WELCOME_MSG = (
+            "👋 Hola, soy el asistente de PX Salud.\n\n"
+            "Para comenzar, por favor escribí el DNI de la persona que necesita atención médica."
+        )
+    elif int(nodo_inicio) == 204:  # flujo Redsom (event_id=2)
+        WELCOME_MSG = (
+            "Para continuar, necesitamos su consentimiento conforme a la Ley 25.326 (Protección de Datos Personales).\n\n"
+            "Sus datos serán tratados por Redsom para orientarlo médicamente. PacienteX actúa como proveedor tecnológico. Más información: Política de Privacidad.\n\n"
+
+            "*Respondé 'Si' si aceptás.*\n\n"
+        )
+    else:
+        WELCOME_MSG = "👋 Hola, soy el asistente de PX Salud."
+
+
+
 
     # 2) Guard de sesión: si corresponde, ENVIAR WELCOME y NO procesar este mensaje
     if message1(tx, numero_limpio, TTL_MIN):
@@ -477,6 +493,30 @@ def ejecutar_workflow(variables):
             variables["response_text"] = candidate
 
     return variables
+
+def _should_send_close_msg(variables, contacto):
+    # 1) Overrides explícitos (opcionales)
+    if variables.get("skip_close_message") is True:
+        return False
+    if variables.get("force_close_message") is True:
+        return True
+
+    # 2) Heurística: NO consentimiento (nodo 204 + subsiguiente=1)
+    nd = str(variables.get("nodo_destino"))
+    subsig = int(variables.get("subsiguiente", 0))
+    if nd == "204" and subsig == 1:
+        return False
+
+    # 3) Fallback: si existe el campo de consentimiento en el modelo de contacto
+    try:
+        consent = getattr(contacto, "consent_pdpa", None)
+        if consent is False:
+            return False
+    except Exception:
+        pass
+
+    return True
+
 @log_latency
 def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     import json
@@ -546,25 +586,26 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     if estado == "Cerrada":
 
         op_log("engine", "close_transaction_intent", "OK",
-           extra={
-               "tx_id": open_tx_id,
-               "nodo_destino": variables.get("nodo_destino")
-           })
-        send_whatsapp_with_metrics(
-        "¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.", to, None,
-        nodo_id=variables.get("nodo_destino"),
-        tx_id=variables.get("open_tx_id")
-        )
-        
-        try:
-            Messages().add(
-                msg_key=variables.get("nodo_destino"),
-                text="¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.",
-                phone=variables["numero_limpio"],
-                event_id=event_id
+        extra={
+            "tx_id": open_tx_id,
+            "nodo_destino": variables.get("nodo_destino")
+        })
+
+        if _should_send_close_msg(variables, contacto):
+            send_whatsapp_with_metrics(
+                "¡Gracias! Tu consulta quedó registrada. ", to, None,
+                nodo_id=variables.get("nodo_destino"),
+                tx_id=variables.get("open_tx_id")
             )
-        except Exception as e:
-            print(f"[MSG LOG] cierre: {e}")
+            try:
+                Messages().add(
+                    msg_key=variables.get("nodo_destino"),
+                    text="¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.",
+                    phone=variables["numero_limpio"],
+                    event_id=event_id
+                )
+            except Exception as e:
+                print(f"[MSG LOG] cierre: {e}")
 
         # === Enviar y persistir MEDICAL DIGEST SOLO si cerró en nodo 202 ===
         try:

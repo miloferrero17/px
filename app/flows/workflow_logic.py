@@ -9,12 +9,14 @@ def ejecutar_nodo(nodo_id, variables):
     obs_logs.set_request_id(req_id)   
     obs_logs.set_tx_id(tx_id)
 
-    NODOS = {201:nodo_201,
-             202:nodo_202,
-             203:nodo_203,
-             204:nodo_204,
-             205:nodo_205,
-             206:nodo_206}
+    NODOS = {201:nodo_201, #Discrimina Rojos
+             202:nodo_202, #Reporte Guardia
+             203:nodo_203, #Sherlock
+             204:nodo_204, #Consentimiento Ley
+             205:nodo_205, #Motivo Guardia
+             305:nodo_305, #Motivo REDSOM
+             206:nodo_206, #DNI
+             307:nodo_307} #Reporte REDSOM
 
     with obs_logs.node_ctx(nodo_id, tx_id=tx_id, request_id=req_id):
         result = NODOS[nodo_id](variables)
@@ -81,7 +83,7 @@ def nodo_204(variables):
     if result==1:
         # consentimiento afirmativo -> avanzar a 205 sin texto adicional
         return {
-            "nodo_destino": 206,
+            "nodo_destino": 305,
             "subsiguiente": 0,
             "conversation_str": variables["conversation_str"],
             "response_text": "",
@@ -90,7 +92,7 @@ def nodo_204(variables):
             "result": "Abierta"
         }
     cierre = (
-        "Entiendo. No podemos continuar sin tu consentimiento.\n"
+        "Entiendo. No podemos continuar sin tu consentimiento. Gracias!\n"
         
     )
     if result==0:
@@ -205,9 +207,42 @@ def nodo_205(variables):
         if status0 == "skip0":
             response_text = ""
     
+    event_id = variables.get("event_id")
+    destino = 203 if str(event_id) == "2" else 201
+    
 
     return {
-        "nodo_destino": 201,
+        "nodo_destino": destino,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str", ""),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": 0,
+        "result": "Abierta"
+    }
+
+def nodo_305(variables):
+    """
+    Nodo Motivo de Consulta REDSOM
+    """
+    response_text = "Por favor, describa qué ocurrió. \n\n💬Podés responder con texto, foto o audio e incluir todos los detalles que consideres relevantes."
+
+    tx = variables["tx"]
+    contacto = variables.get("contacto")
+    contact_id = getattr(contacto, "contact_id", None)
+
+    if contact_id:
+        fingerprint = tx.sha256_text(response_text)
+        status0, _ = tx.set_question_zero(contact_id, fingerprint=fingerprint)
+        if status0 == "skip0":
+            response_text = ""
+    
+    event_id = variables.get("event_id")
+    destino = 203 
+    
+
+    return {
+        "nodo_destino": destino,
         "subsiguiente": 1,
         "conversation_str": variables.get("conversation_str", ""),
         "response_text": response_text,
@@ -287,7 +322,7 @@ def nodo_202(variables):
 
     response_text = brain.ask_openai(conversation_history)
 
-    # enviar el reporte ahora, antes de saltar a 207
+    # enviar el reporte ahora, antes de saltar a 307
     twilio.send_whatsapp_message(response_text, sender_number, None)
 
     try:
@@ -345,7 +380,7 @@ def nodo_203(variables):
     question_id_str = str(question_id)
 
     if cursor == 0:
-        mensaje_intro = "Por los sintomas que planteas voy a necesitar hacerte " + max_preguntas_str + " preguntas para entender mejor que te anda pasando ."
+        mensaje_intro = "Por los síntomas que planteas voy a necesitar hacerte " + max_preguntas_str + " preguntas para entender mejor que te ocurre."
         twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
         
         try:
@@ -354,8 +389,9 @@ def nodo_203(variables):
             print(f"[MSG LOG] nodo_203 intro: {e}")
 
     if question_id > max_preguntas:
+        next_node = 307 if str(event_id) == "2" else 202
         return {
-            "nodo_destino": 202,
+            "nodo_destino": next_node,
             "subsiguiente": 0,
             "conversation_str": conversation_str,
             "response_text": "",
@@ -417,3 +453,119 @@ def nodo_203(variables):
     }
 
 
+def nodo_307(variables):
+    """
+    Nodo de cierre para flujo Redsom (event_id=2):
+    - Lee el prompt desde events.reporte (event_id=2)
+    - Llama al LLM para obtener JSON: {decision, reason, conversation_summary}
+    - Guarda en public.redsom_digest
+    - NO envía triage ni recomendaciones al paciente
+    - Devuelve result='Cerrada' para que enviar_respuesta_y_actualizar mande el mensaje estándar de cierre
+    """
+    import json
+    import app.services.brain as brain
+    from app.Model.contacts import Contacts
+    from app.Model.transactions import Transactions
+    from app.Model.events import Events
+
+    # Dependencia opcional (si ya creaste el model)
+    try:
+        from app.Model.redsom_digest import RedsomDigest
+        have_model = True
+    except Exception:
+        RedsomDigest = None
+        have_model = False
+
+    ctt = variables["ctt"] if variables.get("ctt") else Contacts()
+    ev  = variables["ev"]  if variables.get("ev")  else Events()
+    tx  = variables["tx"]  if variables.get("tx")  else Transactions()
+
+    numero_limpio = variables.get("numero_limpio")
+    contacto = variables.get("contacto")
+    contact_id = getattr(contacto, "contact_id", None)
+
+    # 1) Tomar event_id y prompt desde events.reporte
+    event_id = variables.get("event_id") or ctt.get_event_id_by_phone(numero_limpio)
+    prompt_reporte = ev.get_reporte_by_event_id(event_id) or ""
+
+    # 2) Armar conversación a pasarle al LLM (igual que 202: conversation_history + prompt del evento)
+    try:
+        conversation_history = variables.get("conversation_history") or []
+        if not isinstance(conversation_history, list):
+            conversation_history = []
+    except Exception:
+        conversation_history = []
+
+    conversation_history.append({"role": "system", "content": prompt_reporte})
+
+    # 3) Llamar al LLM y parsear JSON defensivamente
+    raw = ""
+    try:
+        raw = brain.ask_openai(conversation_history) or ""
+    except Exception as e:
+        print(f"[nodo_307] LLM error: {e}")
+
+    #defailt
+    decision = "ACCIDENTE PERSONAL"
+    reason = ""
+    conversation_summary = "Resumen no disponible."
+
+    try:
+        data = json.loads(raw)
+        d = (data.get("decision") or "").strip().upper()
+        r = (data.get("reason") or "").strip()
+        s = (data.get("conversation_summary") or "").strip()
+        if d in ("ACCIDENTE PERSONAL", "NO ES ACCIDENTE PERSONAL"):
+            decision = d
+        if r:
+            reason = r
+        if s:
+            conversation_summary = s
+    except Exception as e:
+        print(f"[nodo_307] JSON parse error: {e}; raw={raw[:200]}")
+
+    # 4) Obtener tx_id abierto (o el que venga en variables)
+    open_tx_id = variables.get("open_tx_id")
+    if open_tx_id is None:
+        try:
+            open_row = tx.get_open_row(contact_id)
+            open_tx_id = getattr(open_row, "id", None)
+        except Exception as e:
+            print(f"[nodo_307] get_open_row error: {e}")
+            open_tx_id = None
+
+    # 5) Persistir en public.redsom_digest (idempotente por UNIQUE(tx_id))
+    try:
+        if open_tx_id and contact_id:
+            RedsomDigest().add_row(
+                contact_id=contact_id,
+                tx_id=open_tx_id,
+                event_id=int(event_id) if event_id is not None else 2,
+                decision=decision,
+                reason=reason,
+                conversation_summary=conversation_summary,
+            )
+        else:
+            print(f"[nodo_307] skip persist: contact_id={contact_id} tx_id={open_tx_id}")
+    except Exception as e:
+        print(f"[nodo_307] persist error: {e}")
+
+    MAX_LEN = 1200
+    header = f"*Resumen de consulta*\n\nDerivación: {'ACCIDENTE PERSONAL' if decision=='ACCIDENTE PERSONAL' else 'NO ES ACCIDENTE PERSONAL'}"
+    reason_line = f"Motivo: {reason}"
+    summary_block = f"Síntesis: {conversation_summary}"
+    
+    _response = f"{header}\n\n{reason_line}\n\n{summary_block}"
+    response_text = _response[:MAX_LEN]
+
+    # 6) No mandamos nada al paciente aquí (response_text vacío).
+    #    'enviar_respuesta_y_actualizar' cerrará la TX y mandará el mensaje estándar.
+    return {
+        "nodo_destino": 307,
+        "subsiguiente": 1,
+        "conversation_str": variables.get("conversation_str"),
+        "response_text": response_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada"
+    }
