@@ -551,7 +551,7 @@ def nodo_307(variables):
         print(f"[nodo_307] persist error: {e}")
 
     MAX_LEN = 1200
-    header = f"*Resumen de consulta*\n\nDerivación: {'ACCIDENTE PERSONAL' if decision=='ACCIDENTE PERSONAL' else 'NO ES ACCIDENTE PERSONAL'}"
+    header = f"*Resumen de consulta*\n\nTipo: {'ACCIDENTE PERSONAL' if decision=='ACCIDENTE PERSONAL' else 'NO ES ACCIDENTE PERSONAL'}"
     reason_line = f"Motivo: {reason}"
     summary_block = f"Síntesis: {conversation_summary}"
     

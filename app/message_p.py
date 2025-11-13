@@ -359,7 +359,7 @@ def obtener_o_crear_contacto(numero_limpio, request_id=None, tx_id=None):
 
     # 2) Si no existe, crear y luego traer por ID (no volver a get_by_phone)
     if contacto is None:
-        event_id = 1  # default
+        event_id = 2  # default
 
         t1 = time.perf_counter()
         try:
@@ -391,7 +391,7 @@ def obtener_o_crear_contacto(numero_limpio, request_id=None, tx_id=None):
         return contacto, event_id
 
     # 3) Si existe, usar event_id ya presente (evita get_event_id_by_phone)
-    event_id = getattr(contacto, "event_id", None) or 1
+    event_id = getattr(contacto, "event_id", None) or 2
     return contacto, event_id
 
 @log_latency
