@@ -42,7 +42,8 @@ from app.Model.medical_digests import MedicalDigests
 from app.flows.workflows_utils import generar_medical_digest
 from app.obs.logs import log_latency
 
-
+import hashlib
+from app.Model.privacy_consents import PrivacyConsents
 
 @log_latency
 def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, transcription, description, pdf_text):
@@ -52,11 +53,9 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
     numero_limpio = limpiar_numero(to)
 
-    WELCOME_MSG = (
-    "👋 Hola, soy el asistente de PX Salud.\n\n"
-    "Para comenzar, por favor escribí el DNI de la persona que necesita atención médica.")
-
-
+    WELCOME_MSG_DNI = (
+        "👋 Hola, soy el asistente del Sanatorio (potenciado por PacienteX).\n\n"
+        "Por favor, escribí el *DNI de la persona que necesita atención médica*."    )
     tx = Transactions()
     ev = Events()
     msj = Messages()
@@ -71,31 +70,26 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
     # TTL del evento (fallback 5)
     TTL_MIN = ev.get_time_by_event_id(event_id) or 5
 
+    # contact_id  (objeto o dict) - lo usamos para TX y para consent
+    contact_id = (
+        getattr(contacto, "contact_id", None)
+        or getattr(contacto, "id", None)
+        or (contacto.get("contact_id") if isinstance(contacto, dict) else None)
+        or (contacto.get("id") if isinstance(contacto, dict) else None)
+    )
+
+
+
+
     # 2) Guard de sesión: si corresponde, ENVIAR WELCOME y NO procesar este mensaje
     if message1(tx, numero_limpio, TTL_MIN):
-        op_log("engine", "welcome_guard_enter", "OK",
-           to_phone=numero_limpio,
-           extra={
-               "event_id": event_id,
-               "nodo_inicio": nodo_inicio
-           })
-        send_whatsapp_with_metrics(
-        WELCOME_MSG, to, None,
-        nodo_id=nodo_inicio,   # ya calculado arriba
-        tx_id=None)             # aún no existe TX nueva
-
-
+        op_log("engine", "welcome_guard_enter", "OK", to_phone=numero_limpio,  extra={"event_id": event_id, "nodo_inicio": nodo_inicio })
+        
+        send_whatsapp_with_metrics( WELCOME_MSG_DNI, to, None, nodo_id=nodo_inicio,  tx_id=None)             # aún no existe TX nueva
 
         from datetime import datetime, timezone
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
-        # contact_id robusto (objeto o dict)
-        contact_id = (
-            getattr(contacto, "contact_id", None)
-            or getattr(contacto, "id", None)
-            or (contacto.get("contact_id") if isinstance(contacto, dict) else None)
-            or (contacto.get("id") if isinstance(contacto, dict) else None)
-        )
 
         # ==== inspección de TX previa ====
         try:
@@ -130,7 +124,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
 
         # ==== construir historial con WELCOME incluido ====
         history = json.loads(base_context)
-        history.append({"role": "assistant", "content": WELCOME_MSG})
+        history.append({"role": "assistant", "content": WELCOME_MSG_DNI})
         conversation_json = json.dumps(history)
 
         # ==== abrir TX nueva (loguear sí o sí resultado) ====
@@ -166,7 +160,7 @@ def handle_incoming_message(body, to, tiene_adjunto, media_type, file_path, tran
         try:
             msj.add(
                 msg_key=nodo_inicio,   # ya calculado arriba
-                text=WELCOME_MSG,
+                text=WELCOME_MSG_DNI,
                 phone=numero_limpio,
                 event_id=event_id
             )
@@ -415,7 +409,7 @@ def gestionar_sesion_y_mensaje(contacto, event_id, body, numero_limpio, *, nodo_
         conversation_history = json.loads(conversation_str_existente)
 
         # Último msg_key del histórico (1 lectura a Messages)
-        ultimo_mensaje = msj.get_latest_by_phone(numero_limpio)  # ← 1 query
+        ultimo_mensaje = msj.get_latest_by_phone_and_event_id(numero_limpio, event_id) # ← 1 query
         msg_key = ultimo_mensaje.msg_key if ultimo_mensaje else nodo_inicio
 
     # Agregar el mensaje del usuario al historial en memoria + persistir en messages
@@ -551,7 +545,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
                "nodo_destino": variables.get("nodo_destino")
            })
         send_whatsapp_with_metrics(
-        "¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.", to, None,
+        "¡Gracias!", to, None,
         nodo_id=variables.get("nodo_destino"),
         tx_id=variables.get("open_tx_id")
         )
@@ -559,7 +553,7 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
         try:
             Messages().add(
                 msg_key=variables.get("nodo_destino"),
-                text="¡Gracias! Tu consulta quedó registrada. Pronto te brindaremos asistencia.",
+                text="¡Gracias!",
                 phone=variables["numero_limpio"],
                 event_id=event_id
             )
@@ -621,6 +615,20 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
                     try:
                         dest_formatted = "whatsapp:+" + dest_clean
                         twilio.send_whatsapp_message(digest_text, dest_formatted, None)
+
+                        disclaimer_text = (
+                            "PX presenta respuestas autodeclaradas por el/la paciente para agilizar la entrevista "
+                            "y con ello brinda información general de tipo orientativa, no médica. La orientación "
+                            "mostrada es informativa y no sustituye juicio clínico y médico. No utilice este resumen "
+                            "para clasificar urgencias ni para prescribir sin evaluación. PX no realiza triage clínico "
+                            "ni emite diagnósticos, indicaciones ni prescripciones. Si los síntomas cambian o se agravan, "
+                            "priorice revaloración inmediata según protocolos del servicio. La evaluación y priorización "
+                            "asistencial es responsabilidad exclusiva del equipo de salud. PX no es una plataforma de "
+                            "historia clínica ni debe ser utilizada como tal."
+                        )
+
+                        twilio.send_whatsapp_message(disclaimer_text, dest_formatted, None)
+
                     except Exception as e_send:
                         print(f"[medical_digest] error enviando a médico: {e_send}")
                 else:
