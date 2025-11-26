@@ -95,7 +95,6 @@ def nodo_204(variables):
                     contact_id=contact_id,
                     phone_hash="",                # opcional, ya no lo usamos para chequear
                     dni_hash=dni_hash,
-                    privacy_notice_version="v1.0",  # o la versión que manejes
                 )
                 print(f"[CONSENT] fila creada en privacy_consents ")
         except Exception as e:
@@ -418,6 +417,8 @@ def nodo_201(variables):
         "result": "Abierta"
     }
 
+SHOW_URGENCY_TO_PATIENT = False  # cambiar a True si queremos mostrar la linea al paciente
+
 def nodo_202(variables):
     """
     Nodo de generación de reporte médico final usando el historial de conversación.
@@ -425,7 +426,7 @@ def nodo_202(variables):
     import app.services.brain as brain
     import app.services.twilio_service as twilio
     from app.Model.messages import Messages
-    import json
+    import json, re, os
 
     ctt = variables["ctt"]
     ev = variables["ev"]
@@ -445,26 +446,38 @@ def nodo_202(variables):
     mensaje_reporte = ev.get_reporte_by_event_id(event_id)
 
     conversation_history.append({"role": "system", "content": mensaje_reporte})
+    # 1) Pedimos al LLM el reporte COMPLETO (incluye línea de urgencia)
+    full_report_text = brain.ask_openai(conversation_history)
+    # 2) Según configuración, generamos la versión que ve el paciente
+    patient_report_text = full_report_text
+    if not SHOW_URGENCY_TO_PATIENT:
+        # Regex compatible con la que usás en _extract_urgency_line
+        urgency_pattern = re.compile(
+            r"^(?:[🟥🟧🟨🟩⬜]\uFE0F?){5}\s+Urgencia Estimada[^\n\r]*\s*$",
+            re.MULTILINE,
+        )
+        # Eliminamos solo esa línea, dejamos el resto igual
+        patient_report_text = urgency_pattern.sub("", full_report_text).lstrip("\n")
 
-    response_text = brain.ask_openai(conversation_history)
+    # 3) Enviar AL PACIENTE solo la versión filtrada (o completa si SHOW_URGENCY_TO_PATIENT=True)
+    twilio.send_whatsapp_message(patient_report_text, sender_number, None)
 
-    # enviar el reporte ahora, antes de saltar a 207
-    twilio.send_whatsapp_message(response_text, sender_number, None)
+
 
     try:
-        Messages().add(msg_key=202, text=response_text, phone=numero_limpio, event_id=event_id)
+        Messages().add(msg_key=202, text=patient_report_text, phone=numero_limpio, event_id=event_id)
     except Exception as e:
         print(f"[MSG LOG] nodo_202 reporte: {e}")
 
 
     # guardar el reporte en el historial
-    conversation_history.append({"role": "assistant", "content": response_text})
+    conversation_history.append({"role": "assistant", "content": full_report_text})
     variables["conversation_history"] = conversation_history
     variables["conversation_str"] = json.dumps(conversation_history)
 
     disclaimer_text = (
         "PX es una herramienta informativa y de acompañamiento comunicacional. No modifica el triage ni la priorización clínica realizada por el personal de salud del establecimiento al que Usted ha concurrido. PX no brinda diagnóstico, indicaciones médicas, prescripciones ni reemplaza la evaluación presencial por profesionales de la salud. La información y orientación provistas son generales y no constituyen consejo médico. Ante dudas o empeoramiento, consulte el personal de salud del establecimiento al que Usted ha concurrido"    )
-        # enviar disclaimer al paciente
+    # enviar disclaimer al paciente
     twilio.send_whatsapp_message(disclaimer_text, sender_number, None)
 
 

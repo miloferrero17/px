@@ -2,6 +2,8 @@ from typing import Dict
 from app.Model.enums import DataType
 from app.Model.base_model import BaseModel
 from app.Model.field import Field
+import os
+PRIVACY_NOTICE_VERSION = os.getenv("PRIVACY_NOTICE_VERSION", "v1.0")
 
 
 class PrivacyConsents(BaseModel):
