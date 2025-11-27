@@ -52,7 +52,7 @@ from app.obs.logs import op_log
 
 
 WELCOME_MSG_DNI = (
-    "👋 Hola, soy el asistente del Sanatorio (potenciado por PacienteX).\n\n"
+    "👋 Hola, soy el asistente del Sanatorio San Roque (potenciado por PacienteX).\n\n"
     "Por favor, escribí el *DNI de la persona que necesita atención médica*."
 )
 
