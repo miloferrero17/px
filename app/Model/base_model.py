@@ -335,3 +335,13 @@ class CoveragesRegister:
         return f"CoveragesRegister({self.__dict__})"
 globals()["CoveragesRegister"] = CoveragesRegister
 
+
+class PrivacyConsentsRegister:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __repr__(self):
+        return f"PrivacyConsentsRegister({self.__dict__})"
+
+globals()["PrivacyConsentsRegister"] = PrivacyConsentsRegister
+

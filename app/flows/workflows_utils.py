@@ -202,3 +202,40 @@ def generar_medical_digest(conversation_str: str, national_id: Optional[str]) ->
     }
 
     return digest_text, digest_json
+
+
+
+from typing import Optional
+
+def get_last_question_index(conversation_history, max_preguntas_str: str, offtopic_notice: Optional[str] = None,):    
+    """
+    Devuelve el índice en conversation_history del último mensaje del asistente
+    que contiene una línea con formato 'N/max_preguntas - ...'.
+
+    Si se pasa offtopic_notice, se IGNORAN los mensajes del asistente que contengan
+    ese texto (por ejemplo, los avisos de "Para poder continuar..."), para que
+    siempre tome la última "pregunta pura" como referencia.
+
+    Si no encuentra nada, devuelve None.
+    """
+    prefix_pattern = re.compile(r"^\d+/" + re.escape(max_preguntas_str) + r" - ")
+
+    for idx in range(len(conversation_history) - 1, -1, -1):
+        msg = conversation_history[idx]
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") != "assistant":
+            continue
+
+        content = (msg.get("content") or "").strip()
+
+        # Ignorar mensajes de aviso off-topic (que también incluyen la pregunta numerada)
+        if offtopic_notice and offtopic_notice in content:
+            continue
+
+        for line in content.splitlines():
+            line = line.strip()
+            if prefix_pattern.match(line):
+                return idx
+
+    return None
