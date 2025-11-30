@@ -66,7 +66,7 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
         "- chief_complaint: motivo principal (qué + tiempo si aparece; si no, \"No informado\").\n"
         "- symptoms_course: cronología/evolución y signos asociados presentes en el texto.\n"
         "- clinical_assessment: hipótesis y riesgos inmediatos SOLO si surgen del texto; usar léxico prudente si no hay confirmación.\n"
-        "- suggested_tests: estudios que cambian conducta hoy (tipo + región/objetivo). Si región exacta no aparece, usar \"región afectada\".\n"
+        "- suggested_tests: estudios complementarios para diagnosticar al paciente. Si región exacta no aparece, usar \"región afectada\".\n"
         "- treatment_plan: medidas iniciales concretas (intervención + vía + objetivo) sin asumir datos ausentes.\n"
         "\n"
         "CONSISTENCIA TÉCNICA (GENÉRICA):\n"

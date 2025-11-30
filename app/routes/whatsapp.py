@@ -22,6 +22,9 @@ from app.routes import routes as bp  # <- usamos el mismo blueprint "routes"
 load_dotenv()
 TMP_DIR = "/tmp"
 
+META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "px_meta_2025")
+
+
 @bp.route("/", methods=["GET", "POST"])
 def whatsapp_reply():
     if flask.request.method == 'GET':
@@ -122,3 +125,30 @@ def download_file(media_url: str, file_path: str) -> str:
     except Exception as e:
         print(f"❌ Error al descargar archivo desde {media_url}: {e}")
         raise
+
+@bp.route("/whatsapp/meta/webhook", methods=["GET", "POST"])
+def meta_webhook():
+    """
+    Webhook de Meta WhatsApp Cloud API.
+    - GET: verificación inicial (hub.challenge)
+    - POST: eventos de mensajes, estados, etc.
+    """
+
+    # 1) Verificación inicial de Meta (GET)
+    if request.method == "GET":
+        mode = request.args.get("hub.mode")
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+
+        if mode == "subscribe" and token == META_VERIFY_TOKEN and challenge:
+            # Meta espera que devolvamos el challenge tal cual
+            return challenge, 200
+        else:
+            return "Forbidden", 403
+
+    # 2) Eventos normales (POST)
+    data = request.get_json()
+    print(f"📩 Evento Meta WhatsApp webhook: {data}")
+
+    # Más adelante acá llamamos al engine.handle_incoming_message, etc.
+    return "EVENT_RECEIVED", 200
