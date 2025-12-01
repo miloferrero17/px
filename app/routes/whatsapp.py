@@ -32,10 +32,20 @@ def whatsapp_reply():
         return "✅ Server is running and accessible via GET request."
 
     sender_number = flask.request.form.get('From')
-    message_body  = flask.request.form.get("Body", "").strip()
-    num_media     = int(flask.request.form.get("NumMedia", 0))
-    media_url     = flask.request.form.get("MediaUrl0")
-    media_type    = flask.request.form.get("MediaContentType0")
+    message_body  = (flask.request.form.get("Body") or "").strip()
+    num_media_raw = flask.request.form.get("NumMedia", 0) or 0
+    try:
+        num_media = int(num_media_raw)
+    except (TypeError, ValueError):
+        num_media = 0
+
+    media_url  = flask.request.form.get("MediaUrl0")
+    media_type = flask.request.form.get("MediaContentType0")
+
+    # 🛡️ Si no vino el número, no seguimos
+    if not sender_number:
+        print("⚠️ Request a / sin 'From', se ignora.")
+        return str(MessagingResponse())
 
     file_path = ""
     tiene_adjunto = 0
@@ -69,7 +79,7 @@ def whatsapp_reply():
                 print("🖼️ Es imagen")
                 twilio.send_whatsapp_message("Dejame ver tu imagen ...", sender_number)
                 description = vision.describe_image(reply_path)
-                #print(f"🧠 Descripción generada: {description}")
+                # print(f"🧠 Descripción generada: {description}")
                 message_body = message_body + description
                 tiene_adjunto = 1
 
@@ -84,25 +94,45 @@ def whatsapp_reply():
             else:
                 print("⚠️ Tipo de archivo no soportado:", media_type)
                 twilio.send_whatsapp_message(
-                    "⚠️ Tipo de archivo no soportado. Enviá audio, imagen o PDF.", sender_number
+                    "⚠️ Tipo de archivo no soportado. Enviá audio, imagen o PDF.",
+                    sender_number,
                 )
 
         except Exception as e:
             print("❌ Error procesando media:", str(e))
-            twilio.send_whatsapp_message("❌ Hubo un problema procesando el archivo. Intentalo de nuevo.", sender_number)
+            twilio.send_whatsapp_message(
+                "❌ Hubo un problema procesando el archivo. Intentalo de nuevo.",
+                sender_number,
+            )
             return str(MessagingResponse())
 
     # En todos los casos (texto, transcripción, imagen, PDF)
     try:
         engine.handle_incoming_message(
-            message_body, sender_number, tiene_adjunto, media_type,
-            file_path, transcription, description, pdf_text
+            message_body,
+            sender_number,
+            tiene_adjunto,
+            media_type,
+            file_path,
+            transcription,
+            description,
+            pdf_text,
         )
     except Exception as e:
         print(f"❌ Error en engine: {e}")
-        twilio.send_whatsapp_message("❌ Ocurrió un error interno al procesar tu mensaje.", sender_number)
+        if sender_number:
+            try:
+                twilio.send_whatsapp_message(
+                    "❌ Ocurrió un error interno al procesar tu mensaje.",
+                    sender_number,
+                )
+            except Exception as send_err:
+                print(
+                    f"⚠️ Además falló el envío de mensaje de error por Twilio: {send_err}"
+                )
 
     return str(MessagingResponse())
+
 
 
 def download_file(media_url: str, file_path: str) -> str:
