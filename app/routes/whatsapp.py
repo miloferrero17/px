@@ -1,6 +1,7 @@
 # Módulos Built-in
 import flask
-from flask import request
+from flask import request, current_app
+
 import os
 import requests
 import time
@@ -136,19 +137,22 @@ def meta_webhook():
 
     # 1) Verificación inicial de Meta (GET)
     if request.method == "GET":
-        mode = request.args.get("hub.mode")
-        token = request.args.get("hub.verify_token")
+        mode      = request.args.get("hub.mode")
+        token     = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
 
         if mode == "subscribe" and token == META_VERIFY_TOKEN and challenge:
-            # Meta espera que devolvamos el challenge tal cual
+            current_app.logger.info("META WEBHOOK VERIFY OK")
             return challenge, 200
-        else:
-            return "Forbidden", 403
+
+        current_app.logger.warning(
+            "META WEBHOOK VERIFY FAIL: mode=%s token=%s", mode, token
+        )
+        return "Forbidden", 403
 
     # 2) Eventos normales (POST)
-    data = request.get_json()
-    print(f"📩 Evento Meta WhatsApp webhook: {data}")
+    data = request.get_json(silent=True) or {}
+    current_app.logger.info("META WHATSAPP WEBHOOK EVENT: %s", data)
 
     # Más adelante acá llamamos al engine.handle_incoming_message, etc.
     return "EVENT_RECEIVED", 200
