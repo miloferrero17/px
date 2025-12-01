@@ -132,7 +132,7 @@ def meta_webhook():
     """
     Webhook de Meta WhatsApp Cloud API.
     - GET: verificación inicial (hub.challenge)
-    - POST: eventos de mensajes, estados, etc.
+    - POST: eventos de mensajes y estados.
     """
 
     # 1) Verificación inicial de Meta (GET)
@@ -152,7 +152,57 @@ def meta_webhook():
 
     # 2) Eventos normales (POST)
     data = request.get_json(silent=True) or {}
-    current_app.logger.info("META WHATSAPP WEBHOOK EVENT: %s", data)
+    print(f"📩 Evento Meta WhatsApp webhook RAW: {data}")
 
-    # Más adelante acá llamamos al engine.handle_incoming_message, etc.
+    try:
+        if data.get("object") != "whatsapp_business_account":
+            # No es un evento de WhatsApp que nos interese
+            return "IGNORED", 200
+
+        entries = data.get("entry", [])
+        for entry in entries:
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+
+                # Si solo trae 'statuses', lo ignoramos por ahora
+                if "statuses" in value and "messages" not in value:
+                    print("ℹ️ Evento de status de Meta (lo ignoramos por ahora)")
+                    continue
+
+                messages = value.get("messages", [])
+                contacts = value.get("contacts", [])
+
+                for idx, msg in enumerate(messages):
+                    msg_type = msg.get("type")
+                    from_id  = msg.get("from")  # ej: "5492477661029"
+
+                    # Si no viene 'from', intentamos tomarlo desde contacts
+                    if not from_id and contacts:
+                        from_id = contacts[min(idx, len(contacts)-1)].get("wa_id")
+
+                    if not from_id:
+                        print("⚠️ Evento Meta sin 'from' o 'wa_id', se omite.")
+                        continue
+
+                    sender_number = f"whatsapp:+{from_id}"
+
+                    if msg_type == "text":
+                        text_body = (msg.get("text") or {}).get("body", "").strip()
+                        if not text_body:
+                            print("⚠️ Mensaje de texto vacío desde Meta, se omite.")
+                            continue
+
+                        print(f"✅ Meta INCOMING from {sender_number}: {text_body}")
+                        current_app.logger.info(
+                            "META INCOMING TEXT: from=%s body=%s",
+                            sender_number,
+                            text_body,
+                        )
+                    else:
+                        print(f"ℹ️ Tipo de mensaje Meta no manejado todavía: {msg_type}")
+
+    except Exception as e:
+        print(f"❌ Error procesando evento Meta: {e}")
+
     return "EVENT_RECEIVED", 200
