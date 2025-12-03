@@ -1,7 +1,7 @@
 import os
 import requests
 
-# ⚠️ COMPLETAR con tus valores de Meta
+# valores de Meta
 META_API_VERSION   = os.getenv("META_API_VERSION", "v24.0")
 META_WABA_PHONE_ID = os.getenv("META_WABA_PHONE_ID")  # ej: "891909964005536"
 META_WABA_TOKEN    = os.getenv("META_WABA_TOKEN")     # tu token de acceso de Meta

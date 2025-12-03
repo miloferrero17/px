@@ -12,10 +12,10 @@ from requests.auth import HTTPBasicAuth
 from twilio.twiml.messaging_response import MessagingResponse
 
 # Propios
-import app.services.twilio_service as twilio
 import app.services.wisper as wisper
 import app.services.vision as vision
 import app.message_p as engine
+from app.services.messaging import send_message
 
 from app.routes import routes as bp  # <- usamos el mismo blueprint "routes"
 
@@ -24,7 +24,11 @@ load_dotenv()
 TMP_DIR = "/tmp"
 
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "px_meta_2025")
-
+META_WABA_TOKEN = (
+    os.getenv("META_WABA_TOKEN")
+    or os.getenv("META_ACCESS_TOKEN")
+    or os.getenv("META_WHATSAPP_TOKEN")
+)
 
 @bp.route("/", methods=["GET", "POST"])
 def whatsapp_reply():
@@ -69,7 +73,8 @@ def whatsapp_reply():
 
             if media_type.startswith("audio"):
                 print("🎙️ Es audio")
-                twilio.send_whatsapp_message("Te estoy escuchando ...", sender_number)
+                send_message("Te estoy escuchando ...", sender_number)
+                transcription = wisper.transcribir_audio_cloud(reply_path)
                 transcription = wisper.transcribir_audio_cloud(reply_path)
                 print(f"📝 Transcripción: {transcription}")
                 message_body = transcription
@@ -77,7 +82,7 @@ def whatsapp_reply():
 
             elif media_type.startswith("image"):
                 print("🖼️ Es imagen")
-                twilio.send_whatsapp_message("Dejame ver tu imagen ...", sender_number)
+                send_message("Dejame ver tu imagen ...", sender_number)
                 description = vision.describe_image(reply_path)
                 # print(f"🧠 Descripción generada: {description}")
                 message_body = message_body + description
@@ -85,7 +90,7 @@ def whatsapp_reply():
 
             elif media_type == "application/pdf":
                 print("📄 Es PDF")
-                twilio.send_whatsapp_message("Dejame ver tu archivo ...", sender_number)
+                send_message("Dejame ver tu archivo ...", sender_number)
                 pdf_text = vision.extract_text_from_pdf(reply_path)
                 pdf_text = vision.resumir_texto_largo(pdf_text)
                 print(f"📄 Texto resumido del PDF:\n{pdf_text[:300]}...")
@@ -93,18 +98,17 @@ def whatsapp_reply():
                 tiene_adjunto = 1
             else:
                 print("⚠️ Tipo de archivo no soportado:", media_type)
-                twilio.send_whatsapp_message(
-                    "⚠️ Tipo de archivo no soportado. Enviá audio, imagen o PDF.",
-                    sender_number,
-                )
+                send_message( "⚠️ Tipo de archivo no soportado. Enviá audio, imagen o PDF.", sender_number,
+    )
 
         except Exception as e:
             print("❌ Error procesando media:", str(e))
-            twilio.send_whatsapp_message(
+            send_message(
                 "❌ Hubo un problema procesando el archivo. Intentalo de nuevo.",
                 sender_number,
             )
             return str(MessagingResponse())
+
 
     # En todos los casos (texto, transcripción, imagen, PDF)
     try:
@@ -122,14 +126,15 @@ def whatsapp_reply():
         print(f"❌ Error en engine: {e}")
         if sender_number:
             try:
-                twilio.send_whatsapp_message(
+                send_message(
                     "❌ Ocurrió un error interno al procesar tu mensaje.",
                     sender_number,
                 )
             except Exception as send_err:
                 print(
-                    f"⚠️ Además falló el envío de mensaje de error por Twilio: {send_err}"
+                    f"⚠️ Además falló el envío de mensaje de error por provider: {send_err}"
                 )
+
 
     return str(MessagingResponse())
 
@@ -203,33 +208,122 @@ def meta_webhook():
                 # Normalizamos al formato Twilio-like: whatsapp:+<numero>
                 sender_number = f"whatsapp:+{wa_from}" if wa_from else None
 
-                # Por ahora manejamos solo texto
+                # Variables comunes para el engine
                 text_body = ""
+                tiene_adjunto = 0
+                media_type = None
+                file_path = ""
+                description = ""
+                transcription = ""
+                pdf_text = ""
+
+                # 🧾 TEXTO
                 if msg_type == "text":
                     text_body = (msg.get("text", {}) or {}).get("body", "") or ""
+
+                # 🖼 IMAGEN
+                elif msg_type == "image":
+                    media = (msg.get("image") or {})
+                    media_id = media.get("id")
+                    caption = (media.get("caption") or "")
+                    if not media_id:
+                        print("⚠️ Imagen Meta sin media_id, se omite.")
+                        continue
+
+                    try:
+                        file_path, media_type = download_meta_media(media_id)
+                        description = vision.describe_image(file_path)
+                        tiene_adjunto = 1
+                        # combinamos caption + descripción para el engine
+                        text_body = (caption + " " + description).strip()
+                    except Exception as e:
+                        print(f"❌ Error procesando imagen Meta: {e}")
+                        send_message(
+                            "❌ Hubo un problema procesando la imagen. Intentalo de nuevo.",
+                            sender_number,
+                        )
+                        continue
+
+                # 🎙 AUDIO
+                elif msg_type == "audio":
+                    media = (msg.get("audio") or {})
+                    media_id = media.get("id")
+                    if not media_id:
+                        print("⚠️ Audio Meta sin media_id, se omite.")
+                        continue
+
+                    try:
+                        file_path, media_type = download_meta_media(media_id)
+                        transcription = wisper.transcribir_audio_cloud(file_path)
+                        tiene_adjunto = 1
+                        text_body = transcription or ""
+                    except Exception as e:
+                        print(f"❌ Error procesando audio Meta: {e}")
+                        send_message(
+                            "❌ Hubo un problema procesando el audio. Intentalo de nuevo.",
+                            sender_number,
+                        )
+                        continue
+
+                # 📄 DOCUMENTO (tratamos PDFs)
+                elif msg_type == "document":
+                    media = (msg.get("document") or {})
+                    media_id = media.get("id")
+                    caption = (media.get("caption") or "")
+                    mime = media.get("mime_type") or ""
+
+                    if not media_id:
+                        print("⚠️ Documento Meta sin media_id, se omite.")
+                        continue
+
+                    try:
+                        file_path, media_type = download_meta_media(media_id)
+                        # Sólo procesamos de verdad si es PDF
+                        effective_mime = mime or media_type
+                        if effective_mime == "application/pdf":
+                            raw_pdf = vision.extract_text_from_pdf(file_path)
+                            pdf_text = vision.resumir_texto_largo(raw_pdf)
+                            tiene_adjunto = 1
+                            text_body = (caption + " " + pdf_text).strip()
+                        else:
+                            print(f"⚠️ Documento no-PDF ({effective_mime}), no se procesa.")
+                            send_message(
+                                "⚠️ Sólo puedo procesar documentos PDF por ahora.",
+                                sender_number,
+                            )
+                            continue
+                    except Exception as e:
+                        print(f"❌ Error procesando documento Meta: {e}")
+                        send_message(
+                            "❌ Hubo un problema procesando el archivo. Intentalo de nuevo.",
+                            sender_number,
+                        )
+                        continue
+
                 else:
                     print(f"⚠️ Tipo de mensaje Meta no soportado aún: {msg_type}")
                     continue
 
-                print(f"✅ Meta INCOMING from {sender_number}: {text_body}")
+                print(f"✅ Meta INCOMING from {sender_number}: {text_body[:120]}")
 
                 if not sender_number or not text_body:
-                    print("⚠️ Meta webhook sin sender_number o sin texto, se omite.")
+                    print("⚠️ Meta webhook sin sender_number o sin texto útil, se omite.")
                     continue
 
                 # Llamamos al mismo engine que usa Twilio
                 import app.message_p as engine
 
                 engine.handle_incoming_message(
-                    text_body,      # message_body
+                    text_body,      # message_body (texto, transcripción, caption+desc, etc.)
                     sender_number,  # sender_number (whatsapp:+549...)
-                    0,              # tiene_adjunto
-                    None,           # media_type
-                    "",             # file_path
-                    "",             # transcription
-                    "",             # description
-                    ""              # pdf_text
+                    tiene_adjunto,  # 0 / 1
+                    media_type,     # p.ej. "image/jpeg", "audio/ogg", "application/pdf"
+                    file_path,      # ruta local del archivo
+                    transcription,  # si era audio
+                    description,    # si era imagen
+                    pdf_text        # si era pdf
                 )
+
 
         return "EVENT_RECEIVED", 200
 
@@ -237,3 +331,39 @@ def meta_webhook():
         print(f"❌ Error procesando webhook Meta: {e}")
         return "ERROR", 500
 
+def download_meta_media(media_id: str) -> tuple[str, str]:
+    """
+    Descarga un archivo multimedia desde la API de Meta usando el media_id.
+    Devuelve (file_path, content_type).
+    """
+    if not META_WABA_TOKEN:
+        raise RuntimeError("META_WABA_TOKEN / META_ACCESS_TOKEN / META_WHATSAPP_TOKEN no está configurado")
+
+    # 1) Pedimos info del media (incluye URL y mime)
+    info_url = f"https://graph.facebook.com/v21.0/{media_id}"
+    headers = {"Authorization": f"Bearer {META_WABA_TOKEN}"}
+
+    r = requests.get(info_url, headers=headers, timeout=10)
+    r.raise_for_status()
+    meta_info = r.json()
+
+    file_url = meta_info.get("url")
+    content_type = meta_info.get("mime_type") or meta_info.get("content_type") or "application/octet-stream"
+
+    if not file_url:
+        raise RuntimeError(f"Meta media {media_id} sin URL")
+
+    # 2) Bajamos el archivo binario
+    r2 = requests.get(file_url, headers=headers, timeout=20)
+    r2.raise_for_status()
+
+    ext = content_type.split("/")[-1] or "bin"
+    folder = os.path.join(TMP_DIR, "meta_media")
+    os.makedirs(folder, exist_ok=True)
+    file_path = os.path.join(folder, f"{media_id}.{ext}")
+
+    with open(file_path, "wb") as f:
+        f.write(r2.content)
+
+    print(f"✅ Archivo Meta descargado en: {file_path} ({content_type})")
+    return file_path, content_type
