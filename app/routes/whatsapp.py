@@ -162,77 +162,78 @@ def meta_webhook():
     """
     Webhook de Meta WhatsApp Cloud API.
     - GET: verificación inicial (hub.challenge)
-    - POST: eventos de mensajes y estados.
+    - POST: eventos de mensajes, estados, etc.
     """
 
     # 1) Verificación inicial de Meta (GET)
     if request.method == "GET":
-        mode      = request.args.get("hub.mode")
-        token     = request.args.get("hub.verify_token")
+        mode = request.args.get("hub.mode")
+        token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
 
         if mode == "subscribe" and token == META_VERIFY_TOKEN and challenge:
-            current_app.logger.info("META WEBHOOK VERIFY OK")
             return challenge, 200
-
-        current_app.logger.warning(
-            "META WEBHOOK VERIFY FAIL: mode=%s token=%s", mode, token
-        )
-        return "Forbidden", 403
+        else:
+            return "Forbidden", 403
 
     # 2) Eventos normales (POST)
-    data = request.get_json(silent=True) or {}
+    data = request.get_json() or {}
     print(f"📩 Evento Meta WhatsApp webhook RAW: {data}")
 
     try:
-        if data.get("object") != "whatsapp_business_account":
-            # No es un evento de WhatsApp que nos interese
-            return "IGNORED", 200
-
         entries = data.get("entry", [])
         for entry in entries:
             changes = entry.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
 
-                # Si solo trae 'statuses', lo ignoramos por ahora
-                if "statuses" in value and "messages" not in value:
+                # Si viene solo status (sent/delivered/read), lo ignoramos por ahora
+                if value.get("statuses") and not value.get("messages"):
                     print("ℹ️ Evento de status de Meta (lo ignoramos por ahora)")
                     continue
 
                 messages = value.get("messages", [])
-                contacts = value.get("contacts", [])
+                if not messages:
+                    continue
 
-                for idx, msg in enumerate(messages):
-                    msg_type = msg.get("type")
-                    from_id  = msg.get("from")  # ej: "5492477661029"
+                msg = messages[0]
+                msg_type = msg.get("type")
+                wa_from = msg.get("from")  # ej: "5492477661029"
 
-                    # Si no viene 'from', intentamos tomarlo desde contacts
-                    if not from_id and contacts:
-                        from_id = contacts[min(idx, len(contacts)-1)].get("wa_id")
+                # Normalizamos al formato Twilio-like: whatsapp:+<numero>
+                sender_number = f"whatsapp:+{wa_from}" if wa_from else None
 
-                    if not from_id:
-                        print("⚠️ Evento Meta sin 'from' o 'wa_id', se omite.")
-                        continue
+                # Por ahora manejamos solo texto
+                text_body = ""
+                if msg_type == "text":
+                    text_body = (msg.get("text", {}) or {}).get("body", "") or ""
+                else:
+                    print(f"⚠️ Tipo de mensaje Meta no soportado aún: {msg_type}")
+                    continue
 
-                    sender_number = f"whatsapp:+{from_id}"
+                print(f"✅ Meta INCOMING from {sender_number}: {text_body}")
 
-                    if msg_type == "text":
-                        text_body = (msg.get("text") or {}).get("body", "").strip()
-                        if not text_body:
-                            print("⚠️ Mensaje de texto vacío desde Meta, se omite.")
-                            continue
+                if not sender_number or not text_body:
+                    print("⚠️ Meta webhook sin sender_number o sin texto, se omite.")
+                    continue
 
-                        print(f"✅ Meta INCOMING from {sender_number}: {text_body}")
-                        current_app.logger.info(
-                            "META INCOMING TEXT: from=%s body=%s",
-                            sender_number,
-                            text_body,
-                        )
-                    else:
-                        print(f"ℹ️ Tipo de mensaje Meta no manejado todavía: {msg_type}")
+                # Llamamos al mismo engine que usa Twilio
+                import app.message_p as engine
+
+                engine.handle_incoming_message(
+                    text_body,      # message_body
+                    sender_number,  # sender_number (whatsapp:+549...)
+                    0,              # tiene_adjunto
+                    None,           # media_type
+                    "",             # file_path
+                    "",             # transcription
+                    "",             # description
+                    ""              # pdf_text
+                )
+
+        return "EVENT_RECEIVED", 200
 
     except Exception as e:
-        print(f"❌ Error procesando evento Meta: {e}")
+        print(f"❌ Error procesando webhook Meta: {e}")
+        return "ERROR", 500
 
-    return "EVENT_RECEIVED", 200
