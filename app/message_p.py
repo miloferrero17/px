@@ -16,6 +16,8 @@ from typing import Optional
 
 # Módulos de 3eros
 import app.services.twilio_service as twilio
+from app.services.messaging import send_message
+
 from twilio.twiml.messaging_response import MessagingResponse
 
 # Módulos propios
@@ -721,29 +723,34 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
 
 def send_whatsapp_with_metrics(text, to, media_url, *, nodo_id=None, request_id=None, tx_id=None):
     """
-    Envía un WhatsApp y registra logs centralizados:
-    - PROVIDER_CALL (latencia/status)
-    - PROVIDER_RESULT (provider_ref, tamaños, to_hash)
-    Sin PII de contenido.
+    Envía un WhatsApp usando el proveedor configurado (Twilio o Meta)
+    a través de app.services.messaging.send_message y registra logs
+    centralizados (PROVIDER_CALL + PROVIDER_RESULT).
     """
     # mantiene tu comportamiento: generar request_id si falta
     rid = request_id or CTX_REQUEST_ID.get() or set_request_id(None)
+
+    # Leemos el provider desde las vars de entorno
+    provider = os.getenv("WHATSAPP_PROVIDER", "twilio").lower()
 
     # PII-safe
     to_hash = hashlib.sha256((to or "").encode("utf-8")).hexdigest()[:12]
     bytes_len = len((text or "").encode("utf-8"))
 
     # medir latencia y status de la call
-    with provider_call("twilio", "send_whatsapp_message"):
-        sid = twilio.send_whatsapp_message(text, to, media_url)
+    with provider_call(provider, "send_whatsapp_message"):
+        # messaging.send_message se encarga de llamar a Twilio o Meta
+        provider_ref = send_message(text, to)
 
     # referencia del proveedor + metadatos útiles para join
     log_provider_result(
-        provider="twilio",
+        provider=provider,
         operation="send_whatsapp_message",
-        provider_ref=sid,     # Twilio SID
+        provider_ref=provider_ref,   # SID de Twilio o wamid de Meta
         bytes_len=bytes_len,
         to_hash=to_hash,
-        extra={"node_id": nodo_id, "tx_id": tx_id}
+        extra={"node_id": nodo_id, "tx_id": tx_id},
     )
+
     return rid
+
