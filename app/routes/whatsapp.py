@@ -229,11 +229,6 @@ def meta_webhook():
                     if not media_id:
                         print("⚠️ Imagen Meta sin media_id, se omite.")
                         continue
-                    engine.send_whatsapp_with_metrics(
-                        "Dejame ver tu imagen ...",
-                        sender_number,
-                        None,
-                    )
 
                     try:
                         file_path, media_type = download_meta_media(media_id)
