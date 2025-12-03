@@ -203,7 +203,15 @@ def _aplicar_adjuntos_si_corresponde( msg_key,tiene_adjunto,media_type,descripti
         )
         conversation_str = json.dumps(conversation_history)
         if adj_kind == "audio":
-            twilio.send_whatsapp_message("✅ Recibí tu audio, lo transcribo…", to, None)
+            from app.message_p import send_whatsapp_with_metrics  # import local para evitar problemas de orden
+
+            send_whatsapp_with_metrics(
+                "✅ Recibí tu audio, lo transcribo…",
+                to,
+                None,
+                nodo_id=msg_key,      # el nodo que está procesando (201, 203, etc.)
+                tx_id=None,           # acá no tenemos la TX, así que lo dejamos en None
+            )
         return True, conversation_history, conversation_str
 
     return False, conversation_history, json.dumps(conversation_history)
@@ -659,10 +667,22 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
         # 2) Enviar por WhatsApp si hay destinatario en .env (número limpio)
         dest_clean = os.getenv("WHATSAPP_MEDICAL_DIGEST_TO", "").strip()
         if dest_clean:
+            dest_formatted = "whatsapp:+" + dest_clean
             try:
-                dest_formatted = "whatsapp:+" + dest_clean
-                twilio.send_whatsapp_message(digest_text, dest_formatted, None)
-                twilio.send_whatsapp_message(MEDICAL_DIGEST_DISCLAIMER, dest_formatted, None)
+                send_whatsapp_with_metrics(
+                    digest_text,
+                    dest_formatted,
+                    None,
+                    nodo_id=variables.get("nodo_destino"),
+                    tx_id=open_tx_id,
+                )
+                send_whatsapp_with_metrics(
+                    MEDICAL_DIGEST_DISCLAIMER,
+                    dest_formatted,
+                    None,
+                    nodo_id=variables.get("nodo_destino"),
+                    tx_id=open_tx_id,
+                )
             except Exception as e_send:
                 print(f"[medical_digest] error enviando a médico: {e_send}")
         else:
@@ -731,7 +751,7 @@ def send_whatsapp_with_metrics(text, to, media_url, *, nodo_id=None, request_id=
     rid = request_id or CTX_REQUEST_ID.get() or set_request_id(None)
 
     # Leemos el provider desde las vars de entorno
-    provider = os.getenv("WHATSAPP_PROVIDER", "twilio").lower()
+    provider = os.getenv("WHATSAPP_PROVIDER", "meta").lower()
 
     # PII-safe
     to_hash = hashlib.sha256((to or "").encode("utf-8")).hexdigest()[:12]

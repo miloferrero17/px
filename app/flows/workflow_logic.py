@@ -424,7 +424,7 @@ def nodo_202(variables):
     Nodo de generación de reporte médico final usando el historial de conversación.
     """
     import app.services.brain as brain
-    import app.services.twilio_service as twilio
+    from app.message_p import send_whatsapp_with_metrics
     from app.Model.messages import Messages
     import json, re, os
 
@@ -433,7 +433,13 @@ def nodo_202(variables):
     numero_limpio = variables["numero_limpio"]
 
     sender_number = "whatsapp:+" + numero_limpio
-    twilio.send_whatsapp_message("Estoy pensando, dame unos segundos...", sender_number, None)
+    send_whatsapp_with_metrics(
+        "Estoy pensando, dame unos segundos...",
+        sender_number,
+        None,
+        nodo_id=202,
+        tx_id=variables.get("open_tx_id"),
+    )
 
     try:
         Messages().add(msg_key=202, text="Estoy pensando, dame unos segundos...", phone=numero_limpio, event_id=ctt.get_event_id_by_phone(numero_limpio))
@@ -460,7 +466,13 @@ def nodo_202(variables):
         patient_report_text = urgency_pattern.sub("", full_report_text).lstrip("\n")
 
     # 3) Enviar AL PACIENTE solo la versión filtrada (o completa si SHOW_URGENCY_TO_PATIENT=True)
-    twilio.send_whatsapp_message(patient_report_text, sender_number, None)
+    send_whatsapp_with_metrics(
+        patient_report_text,
+        sender_number,
+        None,
+        nodo_id=202,
+        tx_id=variables.get("open_tx_id"),
+    )
 
 
 
@@ -478,7 +490,13 @@ def nodo_202(variables):
     disclaimer_text = (
         "PX es una herramienta informativa y de acompañamiento comunicacional. No modifica el triage ni la priorización clínica realizada por el personal de salud del establecimiento al que Usted ha concurrido. PX no brinda diagnóstico, indicaciones médicas, prescripciones ni reemplaza la evaluación presencial por profesionales de la salud. La información y orientación provistas son generales y no constituyen consejo médico. Ante dudas o empeoramiento, consulte el personal de salud del establecimiento al que Usted ha concurrido"    )
     # enviar disclaimer al paciente
-    twilio.send_whatsapp_message(disclaimer_text, sender_number, None)
+    send_whatsapp_with_metrics(
+        disclaimer_text,
+        sender_number,
+        None,
+        nodo_id=202,
+        tx_id=variables.get("open_tx_id"),
+    )
 
 
 
@@ -510,7 +528,7 @@ def nodo_203(variables):
     from typing import Optional
 
     import app.services.brain as brain
-    import app.services.twilio_service as twilio
+    from app.message_p import send_whatsapp_with_metrics
     from app.Model.messages import Messages
     from app.flows import workflows_utils
 
@@ -595,7 +613,13 @@ def nodo_203(variables):
     if cursor == 0:
         mensaje_intro = (
             "Por los síntomas que describe, voy a necesitar hacerle "   + max_preguntas_str +   " preguntas para comprender mejor su situación."   )
-        twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
+        send_whatsapp_with_metrics(
+            mensaje_intro,
+            sender_number,
+            None,
+            nodo_id=203,
+            tx_id=variables.get("open_tx_id"),
+        )
 
         try:
             Messages().add(  msg_key=203,  text=mensaje_intro, phone=numero_limpio,  event_id=event_id )
@@ -779,109 +803,3 @@ def nodo_203(variables):
     }
 
 
-
-"""
-def nodo_203(variables):
-
-    import json
-    import app.services.brain as brain
-    import app.services.twilio_service as twilio
-    from app.Model.messages import Messages 
-
-    tx = variables["tx"]
-    ctt = variables["ctt"]
-    msj = variables["msj"]
-    ev = variables["ev"]
-    numero_limpio = variables["numero_limpio"]
-
-    sender_number = "whatsapp:+" + numero_limpio
-    contacto = ctt.get_by_phone(numero_limpio)
-    contact_id = getattr(contacto, "contact_id", None)
-
-    #print(variables["conversation_str"])
-    conversation_str = variables.get("conversation_str") or "[]"
-    conversation_history = json.loads(conversation_str) if conversation_str else []
-
-    event_id = ctt.get_event_id_by_phone(numero_limpio)
-
-    # Reemplazo: usar cursor desde transactions
-    cursor, last_fp, last_sent_at = tx.get_question_state(contact_id)
-    question_id = cursor + 1
-
-    max_preguntas = int(ev.get_cant_preguntas_by_event_id(event_id))
-    max_preguntas_str = str(max_preguntas)
-    question_id_str = str(question_id)
-
-    if cursor == 0:
-        mensaje_intro = "Por los síntomas que describe, voy a necesitar hacerle" + max_preguntas_str + "preguntas para comprender mejor su situación."
-        twilio.send_whatsapp_message(mensaje_intro, sender_number, None)
-        
-        try:
-            Messages().add(msg_key=203, text=mensaje_intro, phone=numero_limpio, event_id=event_id)
-        except Exception as e:
-            print(f"[MSG LOG] nodo_203 intro: {e}")
-
-    if question_id > max_preguntas:
-        return {
-            "nodo_destino": 202,
-            "subsiguiente": 0,
-            "conversation_str": conversation_str,
-            "response_text": "",
-            "group_id": None,
-            "question_id": question_id,
-            "result": "Abierta"
-        }
-
-    mensaje_def_triage_str = (
-        "Vas a hacerle " + max_preguntas_str + " preguntas con el objetivo de diagnosticarlo medicamente.\n"
-        "En cada iteración debes tomar como historico esta charla : " + conversation_str + ",\n"
-        "En base a ese historico y buscando hacer el mejor diagnostico tenes que escribir la mejor próxima pregunta. Esta mejor próxima pregunta puede hacer uso o no de las funcionalidades del celular (texto, fotos, adjtunar archivos).\n"
-        "Contestame UNICAMENTE con la pregunta; sin números y sin comillas. Agregá exactamente 1 emoji neutral de objeto al FINAL de la oración  "
-    "No uses emojis de caras, manos, corazones, fiesta, fuego ni “100”, ni ningún emoji que exprese emociones u opiniones (p. ej.: 🙂, 😟, 👍, 👎, ❤️, 🎉, 🔥, 💯). "
-    
-    )
-    #print(mensaje_def_triage)
-    
-    mensaje_def_triage = [{
-            "role": "assistant",
-            "content":mensaje_def_triage_str
-        }]
-
-
-    # 1) Generar texto de la pregunta (sin prefijo)
-    pregunta = (brain.ask_openai(mensaje_def_triage) or "").strip()
-
-    # 2) Fingerprint solo del texto de la pregunta
-    fingerprint = tx.sha256_text(pregunta)
-
-    # 3) Registrar intento en la TX (idempotencia + debounce 90s)
-    status, new_cursor = tx.register_question_attempt_by_contact(
-        contact_id,
-        fingerprint=fingerprint,
-        debounce_seconds=90,
-    )
-
-    # 4) Ajustar numeración visible
-    if status == "new":
-        question_id = new_cursor
-        question_id_str = str(question_id)
-    else:
-        question_id = max(question_id, new_cursor or 0)
-        question_id_str = str(question_id)
-
-    # 5) Componer texto final (solo en new/resend)
-    prefijo = f"{question_id_str}/{max_preguntas_str} - "
-    response_text = prefijo + pregunta if status == "new" else ""
-
-
-    return {
-        "nodo_destino": 203,
-        "subsiguiente": 1,
-        "conversation_str": json.dumps(conversation_history),
-        "response_text": response_text,
-        "group_id": None,
-        "question_id": question_id,
-        "result": "Abierta"
-    }
-
-"""
