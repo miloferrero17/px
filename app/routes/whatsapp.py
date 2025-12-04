@@ -75,7 +75,6 @@ def whatsapp_reply():
                 print("🎙️ Es audio")
                 send_message("Te estoy escuchando ...", sender_number)
                 transcription = wisper.transcribir_audio_cloud(reply_path)
-                transcription = wisper.transcribir_audio_cloud(reply_path)
                 print(f"📝 Transcripción: {transcription}")
                 message_body = transcription
                 tiene_adjunto = 1
@@ -230,12 +229,16 @@ def meta_webhook():
                         print("⚠️ Imagen Meta sin media_id, se omite.")
                         continue
 
+                    # Mensaje de cortesía al toque
+                    send_message("Dejame ver tu imagen ...", sender_number)
+
                     try:
                         file_path, media_type = download_meta_media(media_id)
                         description = vision.describe_image(file_path)
                         tiene_adjunto = 1
                         # combinamos caption + descripción para el engine
                         text_body = (caption + " " + description).strip()
+
                     except Exception as e:
                         print(f"❌ Error procesando imagen Meta: {e}")
                         send_message(
@@ -252,11 +255,15 @@ def meta_webhook():
                         print("⚠️ Audio Meta sin media_id, se omite.")
                         continue
 
+                    # Mensaje de cortesía
+                    send_message("Estoy escuchando tu audio ...", sender_number)
+
                     try:
                         file_path, media_type = download_meta_media(media_id)
                         transcription = wisper.transcribir_audio_cloud(file_path)
                         tiene_adjunto = 1
                         text_body = transcription or ""
+
                     except Exception as e:
                         print(f"❌ Error procesando audio Meta: {e}")
                         send_message(
@@ -276,6 +283,9 @@ def meta_webhook():
                         print("⚠️ Documento Meta sin media_id, se omite.")
                         continue
 
+                    # Mensaje de cortesía
+                    send_message("Dejame ver tu archivo ...", sender_number)
+
                     try:
                         file_path, media_type = download_meta_media(media_id)
                         # Sólo procesamos de verdad si es PDF
@@ -292,6 +302,7 @@ def meta_webhook():
                                 sender_number,
                             )
                             continue
+
                     except Exception as e:
                         print(f"❌ Error procesando documento Meta: {e}")
                         send_message(
