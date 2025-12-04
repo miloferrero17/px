@@ -205,13 +205,7 @@ def _aplicar_adjuntos_si_corresponde( msg_key,tiene_adjunto,media_type,descripti
         if adj_kind == "audio":
             from app.message_p import send_whatsapp_with_metrics  # import local para evitar problemas de orden
 
-            send_whatsapp_with_metrics(
-                "✅ Recibí tu audio, lo transcribo…",
-                to,
-                None,
-                nodo_id=msg_key,      # el nodo que está procesando (201, 203, etc.)
-                tx_id=None,           # acá no tenemos la TX, así que lo dejamos en None
-            )
+            
         return True, conversation_history, conversation_str
 
     return False, conversation_history, json.dumps(conversation_history)
