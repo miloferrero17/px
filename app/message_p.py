@@ -46,7 +46,7 @@ import time
 import functools
 
 from app.Model.medical_digests import MedicalDigests
-from app.flows.workflows_utils import generar_medical_digest
+from app.flows.workflows_utils import generar_medical_digest, interpret_yes_no_for_digest
 from app.obs.logs import log_latency
 from app.obs.logs import provider_call, log_provider_result, set_request_id
 from app.obs.logs import CTX_REQUEST_ID
@@ -68,6 +68,11 @@ MEDICAL_DIGEST_DISCLAIMER = (
     "asistencial es responsabilidad exclusiva del equipo de salud. PX no es una plataforma de "
     "historia clínica ni debe ser utilizada como tal.")
 
+PX_MEDICAL_DIGEST_OFFER_ENABLED = os.getenv("PX_MEDICAL_DIGEST_OFFER_ENABLED", "true").lower() == "true"
+
+DIGEST_OFFER_TEXT = (
+    "📄 ¿Querés recibir el *Resumen Médico* de tu consulta?"
+)
 
 
 
@@ -220,6 +225,9 @@ def handle_incoming_message( body,to,tiene_adjunto,media_type,file_path,transcri
     tx = Transactions()
     ev = Events()
     msj = Messages()
+
+    if _handle_digest_answer_if_applicable(body, numero_limpio, contacto, event_id, to):
+        return "Ok"
 
     # 1) Obtener contacto + event_id (antes del guard para conocer TTL del evento)
     contacto, event_id = obtener_o_crear_contacto(numero_limpio)
@@ -597,13 +605,128 @@ def _actualizar_transaccion_y_estado(variables, contacto, event_id, now_utc: str
     # sincronizamos por si el fallback encontró algo
     variables["open_tx_id"] = open_tx_id
     return open_tx_id, estado
-
-def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_id, open_tx_id):
+def _handle_digest_answer_if_applicable(body: str, numero_limpio: str, contacto, event_id: int, to: str) -> bool:
     """
-    Genera, persiste y envía el medical digest SOLO si:
-    - la transacción cerró, y
-    - el nodo_destino es 202.
-    Maneja errores internos sin romper el flujo principal.
+    Si el último mensaje que enviamos al paciente fue la oferta de Resumen Médico,
+    interpreta este mensaje como SÍ/NO y, en caso afirmativo, le envía el digest + disclaimer.
+    Devuelve True si manejó la respuesta y NO debe seguir el flujo normal.
+    """
+    if not PX_MEDICAL_DIGEST_OFFER_ENABLED:
+        return False
+
+    body = (body or "").strip()
+    if not body:
+        return False
+
+    msj = Messages()
+    try:
+        last_msg = msj.get_latest_by_phone_and_event_id(numero_limpio, event_id)
+    except Exception as e:
+        print(f"[DIGEST ANSWER] error leyendo último mensaje: {e}")
+        return False
+
+    if not last_msg:
+        return False
+
+    last_text = (getattr(last_msg, "text", "") or "")
+    # heurística simple: oferta contenía "Resumen Médico"
+    if "Resumen Médico" not in last_text:
+        return False
+
+    decision = interpret_yes_no_for_digest(body)
+
+    tx = Transactions()
+    try:
+        last_info = tx.get_last_tx_info_by_phone(numero_limpio)
+    except Exception as e:
+        print(f"[DIGEST ANSWER] error leyendo última TX: {e}")
+        last_info = None
+
+    last_tx_id = None
+    conversation_str = ""
+    if isinstance(last_info, dict):
+        last_tx_id = last_info.get("id")
+        conversation_str = last_info.get("conversation") or ""
+
+    dest_formatted = to  # HOY: mismo número del paciente. Mañana: teléfono del sanatorio.
+    national_id = getattr(contacto, "national_id", None)
+
+    if decision == 1:
+        # Afirmativa -> buscamos digest ya persistido; si no está, lo generamos
+        digest_text = None
+
+        if last_tx_id is not None:
+            try:
+                md = MedicalDigests()
+                rows = md.get("tx_id", last_tx_id)
+                if rows:
+                    digest_text = getattr(rows[0], "digest_text", None)
+            except Exception as e:
+                print(f"[DIGEST ANSWER] error leyendo MedicalDigests por tx_id: {e}")
+
+        if not digest_text:
+            # fallback: regenerar a partir de la conversación + instrucciones del event
+            digest_instructions = None
+            try:
+                ev = Events()
+                digest_instructions = ev.get_assistant_by_event_id(event_id)
+            except Exception as e:
+                print(f"[DIGEST ANSWER] no se pudo leer events.assistant: {e}")
+
+            try:
+                digest_text, _ = generar_medical_digest(
+                    conversation_str,
+                    national_id,
+                    digest_instructions,
+                )
+            except Exception as e_llm:
+                print(f"[DIGEST ANSWER] error generando digest on-demand: {e_llm}")
+                digest_text = (
+                    "No pudimos generar el resumen médico en este momento. "
+                    "Si lo necesitás, volvé a escribir a la guardia para que lo revisen."
+                )
+
+        # Enviar digest al PACIENTE (hoy). Mañana cambiás dest_formatted por el número del sanatorio.
+        try:
+            send_whatsapp_with_metrics(
+                digest_text,
+                dest_formatted,
+                None,
+                nodo_id=202,
+                tx_id=last_tx_id,
+            )
+            send_whatsapp_with_metrics(
+                MEDICAL_DIGEST_DISCLAIMER,
+                dest_formatted,
+                None,
+                nodo_id=202,
+                tx_id=last_tx_id,
+            )
+        except Exception as e:
+            print(f"[DIGEST ANSWER] error enviando digest al paciente: {e}")
+
+    else:
+        # Negativa o no clasificable -> mensaje corto, sin enviar digest
+        try:
+            send_whatsapp_with_metrics(
+                "Perfecto, no te envío el resumen. Ante cualquier duda podés volver a escribir por acá. 😊",
+                dest_formatted,
+                None,
+                nodo_id=202,
+                tx_id=last_tx_id,
+            )
+        except Exception as e:
+            print(f"[DIGEST ANSWER] error enviando rechazo: {e}")
+
+    return True
+
+def _generar_medical_digest_y_persistir_si_corresponde(variables, contacto, event_id, open_tx_id):
+    """
+    Genera y persiste el medical digest SOLO si:
+    - la transacción cerró en nodo 202 (PX Guardia).
+
+    No envía mensajes de WhatsApp. El envío al paciente o al sanatorio
+    se hace en otro lugar (por ejemplo, si el paciente responde que SÍ).
     """
     try:
         if str(variables.get("nodo_destino")) != "202":
@@ -612,9 +735,21 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
         conversation_str = variables.get("conversation_str") or ""
         national_id = getattr(contacto, "national_id", None)
 
+        # Instrucciones específicas para este event (columna events.assistant)
+        digest_instructions = None
+        try:
+            ev = Events()
+            digest_instructions = ev.get_assistant_by_event_id(event_id)
+        except Exception as e:
+            print(f"[medical_digest] no se pudo leer events.assistant: {e}")
+
         # Generar digest (LLM) con fallback mínimo
         try:
-            digest_text, digest_json = generar_medical_digest(conversation_str, national_id)
+            digest_text, digest_json = generar_medical_digest(
+                conversation_str,
+                national_id,
+                digest_instructions,  # NUEVO parámetro
+            )
         except Exception as e_llm:
             print(f"[medical_digest] extractor LLM falló: {e_llm}")
             try:
@@ -622,6 +757,7 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
                 urgency_line = _extract_urgency_line(conversation_str)
             except Exception:
                 urgency_line = ""
+
             NO_INFO = "No informado"
             dni_valor = (national_id or "").strip() or NO_INFO
             blocks = [f"DNI: {dni_valor}"]
@@ -647,10 +783,10 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
                 "treatment_plan": NO_INFO,
             }
 
-        # 1) Persistir (idempotente por tx_id)
+        # Persistir (idempotente por tx_id)
         try:
             MedicalDigests().add_row(
-                contact_id=contacto.contact_id,
+                contact_id=getattr(contacto, "contact_id", None) or 0,
                 tx_id=open_tx_id if open_tx_id is not None else 0,
                 digest_text=digest_text,
                 digest_json=json.dumps(digest_json, ensure_ascii=False),
@@ -658,31 +794,9 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
         except Exception as e_db:
             print(f"[medical_digest] error persistiendo: {e_db}")
 
-        # 2) Enviar por WhatsApp si hay destinatario en .env (número limpio)
-        dest_clean = os.getenv("WHATSAPP_MEDICAL_DIGEST_TO", "").strip()
-        if dest_clean:
-            dest_formatted = "whatsapp:+" + dest_clean
-            try:
-                send_whatsapp_with_metrics(
-                    digest_text,
-                    dest_formatted,
-                    None,
-                    nodo_id=variables.get("nodo_destino"),
-                    tx_id=open_tx_id,
-                )
-                send_whatsapp_with_metrics(
-                    MEDICAL_DIGEST_DISCLAIMER,
-                    dest_formatted,
-                    None,
-                    nodo_id=variables.get("nodo_destino"),
-                    tx_id=open_tx_id,
-                )
-            except Exception as e_send:
-                print(f"[medical_digest] error enviando a médico: {e_send}")
-        else:
-            print("[medical_digest] WHATSAPP_MEDICAL_DIGEST_TO vacío: se persistió pero NO se envió.")
     except Exception as e:
         print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
+
 @log_latency
 def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     """
@@ -714,17 +828,48 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
             extra={"tx_id": open_tx_id,"nodo_destino": variables.get("nodo_destino"),}, )
 
         # Mensaje de cierre al paciente
-        send_whatsapp_with_metrics("¡Gracias!",to,None,nodo_id=variables.get("nodo_destino"),tx_id=variables.get("open_tx_id"),)
-
-        try:
-            Messages().add(msg_key=variables.get("nodo_destino"),text="¡Gracias!",phone=variables["numero_limpio"],event_id=event_id,)
-        except Exception as e:
-            print(f"[MSG LOG] cierre: {e}")
+        
+        #send_whatsapp_with_metrics("¡Gracias!",to,None,nodo_id=variables.get("nodo_destino"),tx_id=variables.get("open_tx_id"),)
+        #try:
+        #    Messages().add(msg_key=variables.get("nodo_destino"),text="¡Gracias!",phone=variables["numero_limpio"],event_id=event_id,)
+        #except Exception as e:
+        #    print(f"[MSG LOG] cierre: {e}")
 
         # Medical Digest SOLO si cerró en nodo 202
-        _generar_y_enviar_medical_digest_si_corresponde(variables,contacto,event_id,open_tx_id,)
+                # Generar y guardar Medical Digest (solo persistir, sin enviar)
+        _generar_medical_digest_y_persistir_si_corresponde(
+            variables,
+            contacto,
+            event_id,
+            open_tx_id,
+        )
+
 
         op_log("supabase","close_transaction","OK",extra={"tx_id": open_tx_id},)
+
+        # Ofrecer el Resumen Médico al paciente (controlado por flag)
+        if PX_MEDICAL_DIGEST_OFFER_ENABLED:
+            try:
+                offer_text = DIGEST_OFFER_TEXT
+                send_whatsapp_with_metrics(
+                    offer_text,
+                    to,
+                    None,
+                    nodo_id=variables.get("nodo_destino"),
+                    tx_id=open_tx_id,
+                )
+                try:
+                    Messages().add(
+                        msg_key=variables.get("nodo_destino"),
+                        text=offer_text,
+                        phone=variables["numero_limpio"],
+                        event_id=event_id,
+                    )
+                except Exception as e:
+                    print(f"[MSG LOG] digest offer: {e}")
+            except Exception as e:
+                print(f"[DIGEST OFFER] error enviando oferta de resumen médico: {e}")
+
 
     # 5) Log en tabla messages (evitar filas vacías/duplicadas) si la TX sigue abierta
     if (variables.get("response_text") or "").strip() and estado != "Cerrada":

@@ -33,48 +33,50 @@ URGENCY_LINE_RE = re.compile(
     re.MULTILINE
 )
 
-def _build_extractor_messages(conversation_str: str) -> list[dict]:
+def _build_extractor_messages(conversation_str: str, digest_instructions: Optional[str] = None) -> list[dict]:
     """
     Extractor de digest clínico.
     - General (no asume dominios específicos).
-    - Exige evidencia textual para detalles específicos; si no están -> "No informado" o formulación genérica.
-    - Limita la escalada de certeza diagnóstica.
+    - Si digest_instructions no es None, se usan como prompt de sistema.
     """
     convo = (conversation_str or "").strip()
 
-    system = (
-        "Eres un médico especialista en medicina de urgencias entrenado para procesar la transcripción de un triage AI y convertirla en un reporte médico breve y estructurado para un médico de guardia.\n"
-        "SALIDA: EXCLUSIVAMENTE JSON VÁLIDO (sin backticks) con estas claves EXACTAS (valores string): "
-        "\"chief_complaint\",\"symptoms_course\",\"clinical_assessment\",\"suggested_tests\",\"treatment_plan\".\n"
-        "\n"
-        "MODO ESTRICTO DE HECHOS (OBLIGATORIO):\n"
-        "- Afirmá SOLO lo que esté textual o inequívocamente respaldado por la transcripción.\n"
-        "- Si falta un dato (p. ej., lateralidad, segmento anatómico, mecanismo, tiempos exactos, antecedentes, valores), escribí \"No informado\" "
-        "o usá formulaciones genéricas SIN inventar (p. ej., \"región afectada\", \"miembro comprometido\").\n"
-        "- No escales certeza diagnóstica: síntomas ≠ diagnóstico confirmado. Usá un léxico prudente solo en clinical_assessment: "
-        "\"probable\", \"posible\", \"a considerar\". NO inventes resultados ni hallazgos no mencionados.\n"
-        "- No deduzcas: derecha/izquierda, nombres de huesos/órganos específicos, embarazo, comorbilidades, alergias, medicaciones, valores de signos/labs, mecanismo exacto, si no aparecen.\n"
-        "\n"
-        "REGLAS DE ESTILO:\n"
-        "1) Español, registro clínico, frases cortas.\n"
-        "2) No repitas información entre campos.\n"
-        "3) Si un dato no surge claro, usá EXACTAMENTE: \"No informado\".\n"
-        "4) En \"suggested_tests\" NO incluyas obviedades como \"examen físico\", \"signos vitales\" ni \"laboratorio básico\".\n"
-        "5) Evitá verbos vagos sin objetivo (\"controlar\", \"evaluar\"); especificá propósito.\n"
-        "\n"
-        "CRITERIOS POR CAMPO:\n"
-        "- chief_complaint: motivo principal (qué + tiempo si aparece; si no, \"No informado\").\n"
-        "- symptoms_course: cronología/evolución y signos asociados presentes en el texto.\n"
-        "- clinical_assessment: hipótesis y riesgos inmediatos SOLO si surgen del texto; usar léxico prudente si no hay confirmación.\n"
-        "- suggested_tests: estudios complementarios para diagnosticar al paciente. Si región exacta no aparece, usar \"región afectada\".\n"
-        "- treatment_plan: medidas iniciales concretas (intervención + vía + objetivo) sin asumir datos ausentes.\n"
-        "\n"
-        "CONSISTENCIA TÉCNICA (GENÉRICA):\n"
-        "- Generalizá anatomía si faltan detalles (\"miembro afectado\", \"región afectada\").\n"
-        "- No conviertas síntomas en diagnósticos confirmados sin mención explícita (p. ej., no poner \"fractura\" si nunca se menciona o confirma).\n"
-        "- No inventes valores, resultados, ni antecedentes.\n"
-        "Devolvé SOLO el JSON final."
-    )
+    if digest_instructions:
+        system = digest_instructions.strip()
+    else:
+        system = (
+            "Eres un médico especialista en medicina de urgencias entrenado para procesar la transcripción de un triage AI y convertirla en un reporte médico breve y estructurado para un médico de guardia.\n"
+            "SALIDA: EXCLUSIVAMENTE JSON VÁLIDO (sin backticks) con estas claves EXACTAS (valores string): "
+            "\"chief_complaint\",\"symptoms_course\",\"clinical_assessment\",\"suggested_tests\",\"treatment_plan\".\n"
+            "\n"
+            "MODO ESTRICTO DE HECHOS (OBLIGATORIO):\n"
+            "- Afirmá SOLO lo que esté textual o inequívocamente respaldado por la transcripción.\n"
+            "- Si falta un dato (p. ej., lateralidad, segmento anatómico, mecanismo, tiempos exactos, antecedentes, valores), escribí \"No informado\" "
+            "o usá formulaciones genéricas SIN inventar (p. ej., \"región afectada\", \"miembro comprometido\").\n"
+            "- No escales certeza diagnóstica: síntomas ≠ diagnóstico confirmado. Usá un léxico prudente solo en clinical_assessment: "
+            "\"probable\", \"posible\", \"a considerar\". NO inventes resultados ni hallazgos no mencionados.\n"
+            "- No deduzcas: derecha/izquierda, nombres de huesos/órganos específicos, embarazo, comorbilidades, alergias, medicaciones, valores de signos/labs, mecanismo exacto, si no aparecen.\n"
+            "\n"
+            "REGLAS DE ESTILO:\n"
+            "1) Español, registro clínico, frases cortas.\n"
+            "2) No repitas información entre campos.\n"
+            "3) Si un dato no surge claro, usá EXACTAMENTE: \"No informado\".\n"
+            "4) En \"suggested_tests\" NO incluyas obviedades como \"examen físico\", \"signos vitales\" ni \"laboratorio básico\".\n"
+            "5) Evitá verbos vagos sin objetivo (\"controlar\", \"evaluar\"); especificá propósito.\n"
+            "\n"
+            "CRITERIOS POR CAMPO:\n"
+            "- chief_complaint: motivo principal (qué + tiempo si aparece; si no, \"No informado\").\n"
+            "- symptoms_course: cronología/evolución y signos asociados presentes en el texto.\n"
+            "- clinical_assessment: hipótesis y riesgos inmediatos SOLO si surgen del texto; usar léxico prudente si no hay confirmación.\n"
+            "- suggested_tests: estudios complementarios para diagnosticar al paciente. Si región exacta no aparece, usar \"región afectada\".\n"
+            "- treatment_plan: medidas iniciales concretas (intervención + vía + objetivo) sin asumir datos ausentes.\n"
+            "\n"
+            "CONSISTENCIA TÉCNICA (GENÉRICA):\n"
+            "- Generalizá anatomía si faltan detalles (\"miembro afectado\", \"región afectada\").\n"
+            "- No conviertas síntomas en diagnósticos confirmados sin mención explícita (p. ej., no poner \"fractura\" si nunca se menciona o confirma).\n"
+            "- No inventes valores, resultados, ni antecedentes.\n"
+            "Devolvé SOLO el JSON final."
+        )
 
     user = (
         "A continuación tenés el historial completo (JSON con {role, content}). "
@@ -85,8 +87,8 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
-
     ]
+
 
 
 
@@ -145,7 +147,11 @@ def _truncate(text: str, max_len: int = MAX_LEN) -> str:
     truncated = text[: max_len - 1].rstrip()
     return truncated + "…"
 
-def generar_medical_digest(conversation_str: str, national_id: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+def generar_medical_digest(
+    conversation_str: str,
+    national_id: Optional[str],
+    digest_instructions: Optional[str] = None,
+) -> Tuple[str, Dict[str, Any]]:
     """
     Genera el digest para médicos a partir del conversation_str.
     - Usa la línea EXACTA de urgencia del reporte si está presente (no infiere).
@@ -156,7 +162,8 @@ def generar_medical_digest(conversation_str: str, national_id: Optional[str]) ->
     urgency_line = _extract_urgency_line(conversation_str or "")
 
     # 2) Extraer secciones con LLM (temp=0 por configuración de brain)
-    messages = _build_extractor_messages(conversation_str or "[]")
+    messages = _build_extractor_messages(conversation_str or "[]", digest_instructions)
+
     raw = brain.ask_openai(messages)  # temperatura por defecto 0
     data = _safe_load_json(raw)
 
@@ -239,3 +246,45 @@ def get_last_question_index(conversation_history, max_preguntas_str: str, offtop
                 return idx
 
     return None
+
+def norm_text_simple(s: str) -> str:
+    """
+    Normalizador simple para texto corto:
+    - quita tildes
+    - pasa a minúsculas
+    - saca signos/emoji
+    - colapsa espacios
+    """
+    s = ''.join(
+        c for c in unicodedata.normalize("NFD", s or "")
+        if unicodedata.category(c) != "Mn"
+    )
+    s = s.lower()
+    s = re.sub(r"[^\w\s]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def interpret_yes_no_for_digest(body: str) -> int:
+    """
+    Devuelve:
+      1 -> respuesta afirmativa
+      0 -> respuesta negativa
+     -1 -> no se pudo clasificar (lo tratamos como NO seguro)
+    """
+    text = norm_text_simple(body or "")
+    if not text:
+        return -1
+
+    tokens = set(text.split())
+
+    # negativos dominan
+    if tokens & {"no", "nunca", "negativo"}:
+        return 0
+
+    if tokens & {"si", "acepto", "ok", "dale", "claro", "quiero", "obvio"}:
+        if "no" in tokens:
+            return 0
+        return 1
+
+    return -1
