@@ -231,6 +231,8 @@ def handle_incoming_message( body,to,tiene_adjunto,media_type,file_path,transcri
 
     # 1) Obtener contacto + event_id (antes del guard para conocer TTL del evento)
     contacto, event_id = obtener_o_crear_contacto(numero_limpio)
+    if _handle_digest_answer_if_applicable(body, numero_limpio, contacto, event_id, to):
+        return "Ok"
 
     # 2) Contexto base de la sesión
     contexto_agente, base_context, nodo_inicio, TTL_MIN = _build_session_context(
@@ -709,7 +711,7 @@ def _handle_digest_answer_if_applicable(body: str, numero_limpio: str, contacto,
         # Negativa o no clasificable -> mensaje corto, sin enviar digest
         try:
             send_whatsapp_with_metrics(
-                "Perfecto, no te envío el resumen. Ante cualquier duda podés volver a escribir por acá. 😊",
+                "No te enviaremos el resumen para esta prueba. Gracias!",
                 dest_formatted,
                 None,
                 nodo_id=202,
