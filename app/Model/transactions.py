@@ -26,6 +26,9 @@ class Transactions(BaseModel):
             "last_question_fingerprint": Field(None, DataType.STRING, True, False),  # hash sha256 de la última pregunta
             "last_question_sent_at": Field(None, DataType.TIMESTAMP, True, False),   # timestamptz del último envío
 
+            "digest_offer_pending": Field(False, DataType.BOOLEAN, False, False),
+            "digest_answer":        Field(None, DataType.STRING, True, False),
+
         }
         super().__init__("transactions", fields)
         # Exponer los campos para facilitar su uso
@@ -112,13 +115,12 @@ class Transactions(BaseModel):
         event_id: Optional[int] = None,
         puntuacion: Optional[int] = None,
         comentario: Optional[str] = None,
-
-
-
-
+        digest_offer_pending: Optional[bool] = None,
+        digest_answer: Optional[str] = None,
     ) -> None:
         # Establecer id para la clave única
         self.data["id"].value = id
+
         # Actualiza solo los campos proporcionados
         if event_id is not None:
             self.data["event_id"].value = event_id
@@ -136,10 +138,14 @@ class Transactions(BaseModel):
             self.data["puntuacion"].value = puntuacion
         if comentario is not None:
             self.data["comentario"].value = comentario
-
+        if digest_offer_pending is not None:
+            self.data["digest_offer_pending"].value = digest_offer_pending
+        if digest_answer is not None:
+            self.data["digest_answer"].value = digest_answer
 
         # Llama a la actualización usando 'id' como clave única
         super().update("id", id)
+
 
     def delete(self, id: int) -> None:
         super().delete("id", id)
@@ -350,24 +356,45 @@ class Transactions(BaseModel):
     def get_last_tx_info_by_phone(self, phone: str):
         """
         Devuelve info mínima de la última TX para ese teléfono en UNA SOLA lectura:
-        { "id": int, "name": "Abierta"|"Cerrada", "timestamp": <iso str> }
+        {
+        "id": int,
+        "name": str,
+        "timestamp": <iso str>,
+        "event_id": int | None,
+        "conversation": str | None,
+        "digest_offer_pending": bool,
+        "digest_answer": str | None,
+        }
         Retorna None si no hay transacciones.
         """
         txs = super().get("phone", phone, order_field="timestamp.asc,id.asc")
         if not txs:
             return None
+
         last = txs[-1]
+
         if isinstance(last, dict):
             return {
                 "id": last.get("id"),
                 "name": last.get("name"),
                 "timestamp": last.get("timestamp"),
+                "event_id": last.get("event_id"),
+                "conversation": last.get("conversation"),
+                "digest_offer_pending": last.get("digest_offer_pending", False),
+                "digest_answer": last.get("digest_answer"),
             }
+
+        # TransactionsRegister (lo más común)
         return {
             "id": getattr(last, "id", None),
             "name": getattr(last, "name", None),
             "timestamp": getattr(last, "timestamp", None),
+            "event_id": getattr(last, "event_id", None),
+            "conversation": getattr(last, "conversation", None),
+            "digest_offer_pending": getattr(last, "digest_offer_pending", False),
+            "digest_answer": getattr(last, "digest_answer", None),
         }
+
 
     
 """"

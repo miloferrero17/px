@@ -165,7 +165,17 @@ def generar_medical_digest(
     messages = _build_extractor_messages(conversation_str or "[]", digest_instructions)
 
     raw = brain.ask_openai(messages)  # temperatura por defecto 0
+    try:
+        print("[DIGEST DEBUG] raw LLM (primeros 400 chars):", (raw or "")[:400])
+    except Exception:
+        pass
     data = _safe_load_json(raw)
+
+    if not data:
+        try:
+            print("[DIGEST DEBUG] JSON vacío o inválido, usando NO_INFO. raw length:", len(raw or ""))
+        except Exception:
+            pass
 
     # 3) Normalización y defaults
     values: Dict[str, str] = {}
