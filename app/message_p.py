@@ -612,9 +612,20 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
         conversation_str = variables.get("conversation_str") or ""
         national_id = getattr(contacto, "national_id", None)
 
+        # Instrucciones específicas para este servicio (columna events.assistant)
+        try:
+            ev = Events()
+            digest_instructions = ev.get_assistant_by_event_id(event_id)
+        except Exception:
+            digest_instructions = None
+
         # Generar digest (LLM) con fallback mínimo
         try:
-            digest_text, digest_json = generar_medical_digest(conversation_str, national_id)
+            digest_text, digest_json = generar_medical_digest(
+                conversation_str,
+                national_id,
+                digest_instructions,  # 👈 ahora respetamos events.assistant
+            )
         except Exception as e_llm:
             print(f"[medical_digest] extractor LLM falló: {e_llm}")
             try:
@@ -683,6 +694,7 @@ def _generar_y_enviar_medical_digest_si_corresponde(variables, contacto, event_i
             print("[medical_digest] WHATSAPP_MEDICAL_DIGEST_TO vacío: se persistió pero NO se envió.")
     except Exception as e:
         print(f"[medical_digest] error general en hook de cierre nodo 202: {e}")
+
 @log_latency
 def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
     """
@@ -714,12 +726,12 @@ def enviar_respuesta_y_actualizar(variables, contacto, event_id, to):
             extra={"tx_id": open_tx_id,"nodo_destino": variables.get("nodo_destino"),}, )
 
         # Mensaje de cierre al paciente
-        send_whatsapp_with_metrics("¡Gracias!",to,None,nodo_id=variables.get("nodo_destino"),tx_id=variables.get("open_tx_id"),)
+        #send_whatsapp_with_metrics("¡Gracias!",to,None,nodo_id=variables.get("nodo_destino"),tx_id=variables.get("open_tx_id"),)
 
-        try:
-            Messages().add(msg_key=variables.get("nodo_destino"),text="¡Gracias!",phone=variables["numero_limpio"],event_id=event_id,)
-        except Exception as e:
-            print(f"[MSG LOG] cierre: {e}")
+        #try:
+        #    Messages().add(msg_key=variables.get("nodo_destino"),text="¡Gracias!",phone=variables["numero_limpio"],event_id=event_id,)
+        #except Exception as e:
+        #    print(f"[MSG LOG] cierre: {e}")
 
         # Medical Digest SOLO si cerró en nodo 202
         _generar_y_enviar_medical_digest_si_corresponde(variables,contacto,event_id,open_tx_id,)

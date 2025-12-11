@@ -185,11 +185,26 @@ def meta_webhook():
     print(f"📩 Evento Meta WhatsApp webhook RAW: {data}")
 
     try:
+        # Este es el phone_id PROPIO del entorno (distinto en dev y en prod)
+        my_phone_id = os.getenv("META_WABA_PHONE_ID")
+
         entries = data.get("entry", [])
         for entry in entries:
             changes = entry.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
+
+                # 🔎 Filtramos por número: si el evento no es para mi línea, lo ignoro
+                metadata = (value.get("metadata") or {})
+                event_phone_id = metadata.get("phone_number_id")
+
+                if my_phone_id and event_phone_id and event_phone_id != my_phone_id:
+                    print(
+                        f"ℹ️ Evento para otro número (phone_id={event_phone_id}), "
+                        f"yo soy {my_phone_id}, lo ignoro en este entorno."
+                    )
+                    continue
+
 
                 # Si viene solo status (sent/delivered/read), lo ignoramos por ahora
                 if value.get("statuses") and not value.get("messages"):

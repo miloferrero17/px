@@ -33,7 +33,10 @@ URGENCY_LINE_RE = re.compile(
     re.MULTILINE
 )
 
-def _build_extractor_messages(conversation_str: str) -> list[dict]:
+def _build_extractor_messages(
+    conversation_str: str,
+    extra_instructions: Optional[str] = None,
+) -> list[dict]:
     """
     Extractor de digest clínico.
     - General (no asume dominios específicos).
@@ -76,6 +79,10 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
         "Devolvé SOLO el JSON final."
     )
 
+    # 👇 NUEVO: sumar instrucciones específicas del evento si vienen
+    if extra_instructions:
+        system += "\n\nINSTRUCCIONES ESPECÍFICAS DEL SERVICIO:\n" + extra_instructions.strip()
+
     user = (
         "A continuación tenés el historial completo (JSON con {role, content}). "
         "Leelo y devolvé SOLO el JSON solicitado:\n\n"
@@ -85,7 +92,6 @@ def _build_extractor_messages(conversation_str: str) -> list[dict]:
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
-
     ]
 
 
@@ -145,7 +151,11 @@ def _truncate(text: str, max_len: int = MAX_LEN) -> str:
     truncated = text[: max_len - 1].rstrip()
     return truncated + "…"
 
-def generar_medical_digest(conversation_str: str, national_id: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+def generar_medical_digest(
+    conversation_str: str,
+    national_id: Optional[str],
+    extra_instructions: Optional[str] = None,
+) -> Tuple[str, Dict[str, Any]]:
     """
     Genera el digest para médicos a partir del conversation_str.
     - Usa la línea EXACTA de urgencia del reporte si está presente (no infiere).
@@ -156,7 +166,10 @@ def generar_medical_digest(conversation_str: str, national_id: Optional[str]) ->
     urgency_line = _extract_urgency_line(conversation_str or "")
 
     # 2) Extraer secciones con LLM (temp=0 por configuración de brain)
-    messages = _build_extractor_messages(conversation_str or "[]")
+    messages = _build_extractor_messages(
+        conversation_str or "[]",
+        extra_instructions=extra_instructions,
+    )
     raw = brain.ask_openai(messages)  # temperatura por defecto 0
     data = _safe_load_json(raw)
 
