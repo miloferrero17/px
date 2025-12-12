@@ -33,7 +33,11 @@ URGENCY_LINE_RE = re.compile(
     re.MULTILINE
 )
 
-def _build_extractor_messages(conversation_str: str, digest_instructions: Optional[str] = None) -> list[dict]:
+def _build_extractor_messages(
+    conversation_str: str,
+    digest_instructions: Optional[str] = None,
+    extra_instructions: Optional[str] = None,
+) -> list[dict]:
     """
     Extractor de digest clínico.
     - General (no asume dominios específicos).
@@ -77,6 +81,10 @@ def _build_extractor_messages(conversation_str: str, digest_instructions: Option
             "- No inventes valores, resultados, ni antecedentes.\n"
             "Devolvé SOLO el JSON final."
         )
+
+    # 👇 NUEVO: sumar instrucciones específicas del evento si vienen
+    if extra_instructions:
+        system += "\n\nINSTRUCCIONES ESPECÍFICAS DEL SERVICIO:\n" + extra_instructions.strip()
 
     user = (
         "A continuación tenés el historial completo (JSON con {role, content}). "
@@ -151,6 +159,7 @@ def generar_medical_digest(
     conversation_str: str,
     national_id: Optional[str],
     digest_instructions: Optional[str] = None,
+    extra_instructions: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Genera el digest para médicos a partir del conversation_str.
@@ -162,7 +171,11 @@ def generar_medical_digest(
     urgency_line = _extract_urgency_line(conversation_str or "")
 
     # 2) Extraer secciones con LLM (temp=0 por configuración de brain)
-    messages = _build_extractor_messages(conversation_str or "[]", digest_instructions)
+    messages = _build_extractor_messages(
+        conversation_str or "[]",
+        digest_instructions=digest_instructions,
+        extra_instructions=extra_instructions,
+    )
 
     raw = brain.ask_openai(messages)  # temperatura por defecto 0
     try:

@@ -14,7 +14,8 @@ def ejecutar_nodo(nodo_id, variables):
              203:nodo_203,
              204:nodo_204,
              205:nodo_205,
-             206:nodo_206}
+             206:nodo_206,
+             210: nodo_210,}
 
     with obs_logs.node_ctx(nodo_id, tx_id=tx_id, request_id=req_id):
         result = NODOS[nodo_id](variables)
@@ -504,17 +505,24 @@ def nodo_202(variables):
         Messages().add(msg_key=202,  text=disclaimer_text, phone=numero_limpio,  event_id=event_id   )
     except Exception as e:
         print(f"[MSG LOG] nodo_202 disclaimer: {e}")
+    
+    digest_offer_text = "📄 ¿Querés recibir el *Resumen Médico* de tu consulta?"
+
+    conversation_history.append({
+        "role": "assistant",
+        "content": digest_offer_text,
+    })
 
 
     return {
-    "nodo_destino": 202,     # quedarse aquí
-    "subsiguiente": 1,       # sin pasos automáticos siguientes
-    "conversation_str": variables["conversation_str"],
-    "response_text": "",     # el reporte ya se envió por Twilio
-    "group_id": None,
-    "question_id": None,
-    "result": "Cerrada",
-}
+        "nodo_destino": 210,                     # ahora esperamos la respuesta en el nodo 210
+        "subsiguiente": 1,                       # cortar ciclo, enviar la pregunta al paciente
+        "conversation_str": variables["conversation_str"],
+        "response_text": digest_offer_text,      # se envía por el pipeline estándar
+        "group_id": None,
+        "question_id": None,
+        "result": "Abierta",                     #la TX sigue abierta
+    }
 
 def nodo_203(variables):
     """
@@ -802,4 +810,121 @@ def nodo_203(variables):
         "result": "Abierta"
     }
 
+def nodo_210(variables):
+    """
+    Nodo de respuesta a la oferta de Resumen Médico.
 
+    NUEVA LÓGICA:
+    - Siempre asegura que exista un digest persistido para la transacción (tx_id),
+      aunque el paciente responda NO.
+    - Si responde SÍ: envía digest + disclaimer
+    - Si responde NO / random: NO envía digest (pero ya quedó guardado igual)
+    """
+    import json
+    from app.flows import workflows_utils
+    from app.Model.medical_digests import MedicalDigests
+    from app.Model.events import Events
+    from app.message_p import MEDICAL_DIGEST_DISCLAIMER
+
+    body = (variables.get("body") or "").strip()
+    conversation_str = variables.get("conversation_str") or "[]"
+
+    # Cargamos historial
+    try:
+        history = json.loads(conversation_str)
+        if not isinstance(history, list):
+            history = []
+    except Exception:
+        history = []
+
+    contacto = variables.get("contacto")
+    event_id = variables.get("event_id") or getattr(contacto, "event_id", 1)
+    tx_id = variables.get("open_tx_id")
+
+    national_id = getattr(contacto, "national_id", None) if contacto is not None else None
+    contact_id = getattr(contacto, "contact_id", None) or 0
+
+    decision = workflows_utils.interpret_yes_no_for_digest(body)
+    # 1 = sí, 0 = no, -1 = no clasificable (lo tratamos como NO)
+
+    # =========================================================
+    # 0) ASEGURAR DIGEST PERSISTIDO SIEMPRE (si hay tx_id)
+    # =========================================================
+    digest_text = None
+    digest_json = {}
+
+    if tx_id:
+        # A) Intentar recuperar digest ya persistido
+        try:
+            rows = MedicalDigests().get("tx_id", tx_id)
+            if rows:
+                digest_text = getattr(rows[0], "digest_text", None)
+        except Exception:
+            digest_text = None
+
+        # B) Si no existe, generarlo y persistirlo
+        if not digest_text:
+            try:
+                try:
+                    digest_instructions = Events().get_assistant_by_event_id(event_id)
+                except Exception:
+                    digest_instructions = None
+
+                digest_text, digest_json = workflows_utils.generar_medical_digest(
+                    conversation_str,
+                    national_id,
+                    digest_instructions,
+                )
+            except Exception:
+                digest_text = (
+                    "No pudimos generar el resumen médico en este momento. "
+                    "Si lo necesitás, volvé a escribir a la guardia para que lo revisen."
+                )
+                digest_json = {}
+
+            # Persistir digest (ideal: UNIQUE(tx_id) para idempotencia)
+            try:
+                MedicalDigests().add_row(
+                    contact_id=contact_id,
+                    tx_id=tx_id,
+                    digest_text=digest_text,
+                    digest_json=json.dumps(digest_json, ensure_ascii=False),
+                )
+            except Exception:
+                pass
+
+    # =========================================================
+    # 1) RESPONDER SEGÚN DECISIÓN (enviar o no enviar)
+    # =========================================================
+    if decision == 1:
+        # enviar resumen médico
+        combined_text = f"{digest_text or ''}\n\n{MEDICAL_DIGEST_DISCLAIMER}".strip()
+
+        history.append({"role": "assistant", "content": combined_text})
+        variables["digest_answer"] = "yes"  # para que message_p lo persista si corresponde
+
+        return {
+            "nodo_destino": 210,
+            "subsiguiente": 1,
+            "conversation_str": json.dumps(history),
+            "response_text": combined_text,
+            "group_id": None,
+            "question_id": None,
+            "result": "Cerrada",
+        }
+
+    # NO / random: no enviar digest (pero ya está guardado si había tx_id)
+    negative_text = "Perfecto. No te enviaremos el resumen médico. ¡Gracias!"
+
+    history.append({"role": "assistant", "content": negative_text})
+    variables["digest_answer"] = "no"
+
+    return {
+        "nodo_destino": 210,
+        "subsiguiente": 1,
+        "conversation_str": json.dumps(history),
+        "response_text": negative_text,
+        "group_id": None,
+        "question_id": None,
+        "result": "Cerrada",
+    }

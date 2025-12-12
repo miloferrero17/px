@@ -6,6 +6,7 @@ import os
 import requests
 import time
 from dotenv import load_dotenv
+from app.obs.logs import op_log
 
 # Terceros
 from requests.auth import HTTPBasicAuth
@@ -182,14 +183,51 @@ def meta_webhook():
 
     # 2) Eventos normales (POST)
     data = request.get_json() or {}
-    print(f"📩 Evento Meta WhatsApp webhook RAW: {data}")
+
+    # Log liviano del webhook (sin raw completo)
+    first_entry = (data.get("entry") or [{}])[0]
+    first_change = (first_entry.get("changes") or [{}])[0]
+    meta_val = first_change.get("value") or {}
+    metadata = meta_val.get("metadata") or {}
+
+    op_log(
+        provider="meta",
+        operation="meta_webhook_received",
+        status="OK",
+        extra={
+            "phone_number_id": metadata.get("phone_number_id"),
+            "has_messages": bool(meta_val.get("messages")),
+            "has_statuses": bool(meta_val.get("statuses")),
+        },
+    )
+
 
     try:
+        # Este es el phone_id PROPIO del entorno (distinto en dev y en prod)
+        my_phone_id = os.getenv("META_WABA_PHONE_ID")
+
         entries = data.get("entry", [])
         for entry in entries:
             changes = entry.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
+
+                # 🔎 Filtramos por número: si el evento no es para mi línea, lo ignoro
+                metadata = (value.get("metadata") or {})
+                event_phone_id = metadata.get("phone_number_id")
+
+                if my_phone_id and event_phone_id and event_phone_id != my_phone_id:
+                    op_log(
+                        provider="meta",
+                        operation="meta_webhook_skip_other_phone",
+                        status="OK",
+                        extra={
+                            "event_phone_id": event_phone_id,
+                            "my_phone_id": my_phone_id,
+                        },
+                    )
+                    continue
+
 
                 # Si viene solo status (sent/delivered/read), lo ignoramos por ahora
                 if value.get("statuses") and not value.get("messages"):
